@@ -192,6 +192,7 @@ function createCore(
 
   // PRE frame: reset stats + mở đo CPU/GPU
   const unsubEffect = addEffect(() => {
+    sampler.paused = false;
     if (getPerf().paused) setPerf({ paused: false });
 
     sampler.begin();
