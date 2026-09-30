@@ -8,6 +8,7 @@ import type {
   BackendKind,
   FrameStats,
   MemorySource,
+  PassStats,
 } from "./backends/types";
 
 // Type memory
@@ -109,6 +110,8 @@ export type State = {
   gl: AnyRenderer | undefined;
   scene: THREE.Scene | undefined;
   programs: ProgramsPerfs;
+  /** Per-pass timings (deepAnalyze on WebGPU, three r181+). */
+  passes: PassStats[];
   objectWithMaterials: THREE.Mesh[] | null;
   tab: "infos" | "programs" | "data";
 };
@@ -232,6 +235,7 @@ export const usePerfImpl = createWithEqualityFn<State>((_set, get): any => {
     },
     gl: undefined,
     objectWithMaterials: null,
+    passes: [],
     scene: undefined,
     programs: new Map(),
     sceneLength: undefined,

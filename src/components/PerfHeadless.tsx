@@ -13,6 +13,9 @@ export { matriceCount, matriceWorldCount } from "../perfCore";
  * perfCore is a ref-counted singleton, so mounting several instances
  * (e.g. <PerfHeadless /> + <PerfMonitor />) still runs ONE core; it's
  * disposed when the last instance unmounts.
+ *
+ * With several instances: `deepAnalyze` / `matrixUpdate` are ON if any instance
+ * enables them (live); `logsPerSecond` / `chart` come from the first instance.
  */
 export const PerfHeadless: FC<PerfProps> = ({
   logsPerSecond,

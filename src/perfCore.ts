@@ -1,4 +1,9 @@
-import { addAfterEffect, addEffect, addTail } from "@react-three/fiber";
+import {
+  addAfterEffect,
+  addEffect,
+  addTail,
+  invalidate,
+} from "@react-three/fiber";
 import * as THREE from "three";
 
 import { PerfSampler, type SampleChart, type SampleLog } from "./sampler";
@@ -13,71 +18,120 @@ const updateWorldMatrixTemp = THREE.Object3D.prototype.updateWorldMatrix;
 const updateMatrixTemp = THREE.Object3D.prototype.updateMatrix;
 
 const maxGl = ["calls", "triangles", "points", "lines"] as const;
+
+/**
+ * Frames rendered after deepAnalyze is enabled, so frameloop="demand" scenes still
+ * get populated: WebGL needs 2 (the first scan only injects `muiPerf` and forces a
+ * recompile), plus slack for async WebGPU pipelines / GPU timestamps.
+ */
+const ANALYSIS_SETTLE_FRAMES = 4;
+
+/**
+ * Requests a frame for frameloop="demand". Deferred: an `invalidate()` issued
+ * inside a global after-effect is lost — R3F has already decided to stop the loop.
+ */
+const requestFrame = () => queueMicrotask(() => invalidate());
 const maxLog = ["gpu", "cpu", "mem", "fps"] as const;
 
 export const matriceWorldCount = { value: 0 };
 export const matriceCount = { value: 0 };
+
+/** Fixed at core creation — they size buffers and throttles. */
+type CoreOptions = {
+  logsPerSecond: number;
+  chartLength: number;
+  chartHz: number;
+};
+
+/**
+ * Runtime toggles. ON if ANY mounted instance enables them, so e.g.
+ * <PerfHeadless /> (reading data) + <PerfMonitor deepAnalyze /> (debug UI) works.
+ */
+type LiveFlags = { deepAnalyze: boolean; matrixUpdate: boolean };
+
+/** Applies defaults so `undefined` and the default value compare equal. */
+const normalize = (options: PerfProps): CoreOptions => ({
+  logsPerSecond: options.logsPerSecond || 10,
+  chartLength: options.chart?.length ?? 120,
+  chartHz: options.chart?.hz ?? 60,
+});
 
 /**
  * Perf measurement core — ref-counted singleton, React-agnostic.
  *
  * The first `acquirePerf()` picks a backend for the active renderer
  * (WebGLRenderer / WebGPURenderer) and hooks into the render loop; later calls
- * only bump the ref count. The returned release decrements it and disposes at 0,
+ * register as extra holders. Release removes the holder and disposes at 0,
  * so <PerfHeadless /> and <PerfMonitor /> mounted together share ONE core.
  */
-let refCount = 0;
+const holders = new Set<LiveFlags>();
 let current: {
   gl: AnyRenderer;
-  options: PerfProps;
+  options: CoreOptions;
+  setFlags: (flags: LiveFlags) => void;
   dispose: () => void;
 } | null = null;
+
+function mergedFlags(): LiveFlags {
+  const flags: LiveFlags = { deepAnalyze: false, matrixUpdate: false };
+  for (const holder of holders) {
+    flags.deepAnalyze ||= holder.deepAnalyze;
+    flags.matrixUpdate ||= holder.matrixUpdate;
+  }
+  return flags;
+}
 
 export function acquirePerf(
   gl: AnyRenderer,
   scene: THREE.Scene,
   options: PerfProps = {},
 ): () => void {
-  refCount++;
+  const fixed = normalize(options);
+  const holder: LiveFlags = {
+    deepAnalyze: !!options.deepAnalyze,
+    matrixUpdate: !!options.matrixUpdate,
+  };
+  holders.add(holder);
 
   if (!current) {
-    current = { gl, options, dispose: createCore(gl, scene, options) };
-  } else {
-    if (current.gl !== gl) {
-      console.warn(
-        "[r3f-monitor] acquirePerf: core is already bound to another renderer — multi-canvas is not supported, reusing the existing core.",
-      );
-    } else if (
-      current.options.logsPerSecond !== options.logsPerSecond ||
-      current.options.deepAnalyze !== options.deepAnalyze ||
-      current.options.matrixUpdate !== options.matrixUpdate ||
-      current.options.chart?.length !== options.chart?.length ||
-      current.options.chart?.hz !== options.chart?.hz
-    ) {
-      console.warn(
-        "[r3f-monitor] acquirePerf: core is already running with different options — keeping the first instance's options.",
-      );
-    }
+    current = { gl, options: fixed, ...createCore(gl, scene, fixed) };
+  } else if (current.gl !== gl) {
+    console.warn(
+      "[r3f-monitor] acquirePerf: core is already bound to another renderer — multi-canvas is not supported, reusing the existing core.",
+    );
+  } else if (
+    current.options.logsPerSecond !== fixed.logsPerSecond ||
+    current.options.chartLength !== fixed.chartLength ||
+    current.options.chartHz !== fixed.chartHz
+  ) {
+    console.warn(
+      "[r3f-monitor] acquirePerf: core is already running with a different logsPerSecond / chart — keeping the first instance's values.",
+    );
   }
+  current.setFlags(mergedFlags());
 
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    refCount--;
-    if (refCount === 0 && current) {
+    holders.delete(holder);
+    if (!current) return;
+
+    if (holders.size === 0) {
       current.dispose();
       current = null;
+    } else {
+      current.setFlags(mergedFlags());
     }
   };
 }
 
-/** Initializes the measurement core. Returns a dispose function. */
+/** Initializes the measurement core. */
 function createCore(
   gl: AnyRenderer,
   scene: THREE.Scene,
-  { logsPerSecond, chart, deepAnalyze, matrixUpdate }: PerfProps,
-): () => void {
+  { logsPerSecond, chartLength, chartHz }: CoreOptions,
+): { setFlags: (flags: LiveFlags) => void; dispose: () => void } {
   setPerf({ gl, scene });
 
   const backend: PerfBackend = createBackend(gl, scene);
@@ -87,18 +141,19 @@ function createCore(
   let lastMemoryUpdate = 0;
   let disposed = false;
 
-  if (deepAnalyze && !backend.supportsProgramAnalysis) {
-    console.warn(
-      "[r3f-monitor] deepAnalyze is not supported on WebGPURenderer: node materials compile " +
-        "straight to WGSL pipelines, with no program list to map back to materials. " +
-        "All other metrics still work.",
-    );
-  }
+  // Live flags, driven by setFlags() below.
+  let deepAnalyze = false;
+  let matrixPatched = false;
+
+  const passesUpdateRate = 500;
+  let lastPassesUpdate = 0;
+  let analysisFailed = false;
+  let settleFrames = 0;
 
   const sampler = new PerfSampler({
-    chartLen: chart ? chart.length : 120,
-    chartHz: chart ? chart.hz : 60,
-    logsPerSecond: logsPerSecond || 10,
+    chartLen: chartLength,
+    chartHz,
+    logsPerSecond,
 
     chartLogger: (chart: SampleChart) => {
       setPerf({ chart });
@@ -165,8 +220,18 @@ function createCore(
     })
     .catch(() => {});
 
-  // optional: matrix update counting
-  if (matrixUpdate) {
+  // optional: matrix update counting (patches THREE prototypes while on)
+  const setMatrixUpdate = (on: boolean) => {
+    if (on === matrixPatched) return;
+    matrixPatched = on;
+
+    if (!on) {
+      THREE.Object3D.prototype.updateMatrixWorld = updateMatrixWorldTemp;
+      THREE.Object3D.prototype.updateWorldMatrix = updateWorldMatrixTemp;
+      THREE.Object3D.prototype.updateMatrix = updateMatrixTemp;
+      return;
+    }
+
     THREE.Object3D.prototype.updateMatrixWorld = function (
       ...args: Parameters<typeof updateMatrixWorldTemp>
     ) {
@@ -187,7 +252,24 @@ function createCore(
       matriceCount.value++;
       return updateMatrixTemp.apply(this, args);
     };
-  }
+  };
+
+  const setFlags = (flags: LiveFlags) => {
+    setMatrixUpdate(flags.matrixUpdate);
+
+    if (flags.deepAnalyze === deepAnalyze) return;
+    deepAnalyze = flags.deepAnalyze;
+    analysisFailed = false; // re-enabling retries after an earlier error
+
+    if (deepAnalyze) {
+      settleFrames = ANALYSIS_SETTLE_FRAMES;
+      requestFrame();
+    } else {
+      settleFrames = 0;
+      backend.stopAnalysis();
+      setPerf({ passes: [] });
+    }
+  };
 
   // PRE frame: reset stats + start CPU/GPU timing
   const unsubEffect = addEffect(() => {
@@ -232,14 +314,40 @@ function createCore(
       });
     }
 
-    if (!deepAnalyze || !backend.supportsProgramAnalysis) return;
+    if (!deepAnalyze || analysisFailed || !backend.supportsProgramAnalysis) {
+      return;
+    }
 
-    const programs = backend.analyzePrograms();
-    if (programs) {
-      setPerf({
-        programs,
-        triggerProgramsUpdate: getPerf().triggerProgramsUpdate + 1,
-      });
+    // Optional feature: an error here must never break measuring or the R3F loop.
+    try {
+      const programs = backend.analyzePrograms();
+      if (programs) {
+        setPerf({
+          programs,
+          triggerProgramsUpdate: getPerf().triggerProgramsUpdate + 1,
+        });
+      }
+
+      // Skip the throttle while settling: in demand mode these may be the last frames.
+      if (settleFrames > 0 || now - lastPassesUpdate > passesUpdateRate) {
+        lastPassesUpdate = now;
+        const passes = backend.readPasses();
+        if (passes.length > 0 || getPerf().passes.length > 0) {
+          setPerf({ passes });
+        }
+      }
+    } catch (err) {
+      analysisFailed = true;
+      settleFrames = 0;
+      console.warn(
+        "[r3f-monitor] deepAnalyze disabled after an error; other metrics keep running.",
+        err,
+      );
+    }
+
+    if (settleFrames > 0) {
+      settleFrames--;
+      requestFrame();
     }
   });
 
@@ -265,21 +373,17 @@ function createCore(
     return false;
   });
 
-  return () => {
+  const dispose = () => {
     disposed = true;
 
     backend.dispose();
     sampler.dispose();
-
-    // restore matrix prototypes
-    if (matrixUpdate) {
-      THREE.Object3D.prototype.updateMatrixWorld = updateMatrixWorldTemp;
-      THREE.Object3D.prototype.updateWorldMatrix = updateWorldMatrixTemp;
-      THREE.Object3D.prototype.updateMatrix = updateMatrixTemp;
-    }
+    setMatrixUpdate(false);
 
     unsubEffect();
     unsubAfter();
     unsubTail();
   };
+
+  return { setFlags, dispose };
 }

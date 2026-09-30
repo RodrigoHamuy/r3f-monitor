@@ -1,4 +1,5 @@
 import { type FC, useEffect, useState } from "react";
+import { invalidate } from "@react-three/fiber";
 import { usePerf, type ProgramsPerf } from "../store";
 import type { PerfProps } from "../types";
 import { estimateBytesUsed } from "../helpers/estimateBytesUsed";
@@ -142,6 +143,20 @@ const UniformsGL = ({ program, material, setTexNumber }: any) => {
         });
       }
 
+      // WebGPU: no program uniforms — list texture slots straight off the material.
+      if (!program) {
+        Object.keys(material).forEach((key) => {
+          const value = material[key];
+          if (value && value.isTexture && !format.has(key)) {
+            TexCount++;
+            format.set(key, {
+              name: key,
+              value: addTextureUniforms(key, value),
+            });
+          }
+        });
+      }
+
       setTexNumber(TexCount);
       set(format);
     }
@@ -241,6 +256,7 @@ const ProgramUI: FC<{ el: ProgramsPerf }> = ({ el }) => {
           Object.keys(meshes).forEach((key) => {
             meshes[key].material.wireframe = false;
           });
+          invalidate(); // imperative change: frameloop="demand" needs a frame
           set(!toggleProgram);
         }}
       >
@@ -254,7 +270,9 @@ const ProgramUI: FC<{ el: ProgramsPerf }> = ({ el }) => {
           >
             ▶
           </div>
-          {program && <span className={s.programTitle}>{program.name}</span>}
+          <span className={s.programTitle}>
+            {program ? program.name : material.name || material.type}
+          </span>
         </div>
 
         {/* RIGHT: Metrics + Actions */}
@@ -299,11 +317,13 @@ const ProgramUI: FC<{ el: ProgramsPerf }> = ({ el }) => {
               Object.keys(meshes).forEach(
                 (key) => (meshes[key].material.wireframe = true),
               );
+              invalidate();
             }}
             onPointerLeave={() => {
               Object.keys(meshes).forEach(
                 (key) => (meshes[key].material.wireframe = false),
               );
+              invalidate();
             }}
             // Click: Toggle Visibility
             onClick={(e) => {
@@ -314,6 +334,7 @@ const ProgramUI: FC<{ el: ProgramsPerf }> = ({ el }) => {
               Object.keys(meshes).forEach((key) => {
                 if (meshes[key]) meshes[key].visible = invert;
               });
+              invalidate();
               setShowProgram(invert);
             }}
           >
@@ -397,12 +418,47 @@ const ProgramUI: FC<{ el: ProgramsPerf }> = ({ el }) => {
   );
 };
 
+/** Per-pass timings — WebGPU with `renderer.inspector` (three r181+) only. */
+const PassesUI = () => {
+  const passes = usePerf((state) => state.passes);
+  if (!passes || passes.length === 0) return null;
+
+  return (
+    <div className={s.programGeo}>
+      <div className={s.programsULHeader}>Passes</div>
+      <ul className={s.programsUL}>
+        {passes.map((pass, i) => (
+          <li
+            key={i}
+            style={{ display: "flex", justifyContent: "space-between" }}
+          >
+            <span>
+              {pass.type === "compute" ? "compute: " : ""}
+              {pass.name}
+            </span>
+            <span>
+              cpu <b>{pass.cpu.toFixed(2)}</b> ms
+              {pass.gpu !== null && (
+                <>
+                  {" "}
+                  · gpu <b>{pass.gpu.toFixed(2)}</b> ms
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 export const ProgramsUI: FC<PerfProps> = () => {
   usePerf((state) => state.triggerProgramsUpdate);
   const programs: any = usePerf((state) => state.programs);
 
   return (
     <div className={s.programsContainer} onWheel={(e) => e.stopPropagation()}>
+      <PassesUI />
       {programs &&
         Array.from(programs.values()).map((el: any) => {
           if (!el) return null;

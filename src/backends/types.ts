@@ -50,6 +50,16 @@ export type GpuTiming = {
   compute: number;
 };
 
+/** One render/compute pass of a frame (WebGPU + `renderer.inspector`, three r181+). */
+export type PassStats = {
+  type: "render" | "compute";
+  name: string;
+  /** CPU encode time in ms. Nested passes (e.g. shadows) also count toward their parent. */
+  cpu: number;
+  /** GPU time in ms; `null` when not resolved yet or timestamps are unavailable. */
+  gpu: number | null;
+};
+
 export type RendererInfos = {
   version: string;
   renderer: string;
@@ -89,7 +99,7 @@ export interface PerfBackend {
   readGpuTiming(): GpuTiming;
   readMemory(): MemoryStats;
 
-  /** Whether shader programs can be enumerated. WebGPU: false. */
+  /** Whether deepAnalyze (per-material breakdown) is supported. */
   readonly supportsProgramAnalysis: boolean;
 
   /**
@@ -98,6 +108,12 @@ export interface PerfBackend {
    * changes (same as v2).
    */
   analyzePrograms(): ProgramsPerfs | null;
+
+  /** Per-pass timings of a recent frame. Empty when unsupported (WebGL, three < r181). */
+  readPasses(): PassStats[];
+
+  /** deepAnalyze turned off: drop hooks and caches so re-enabling rescans. */
+  stopAnalysis(): void;
 
   dispose(): void;
 }

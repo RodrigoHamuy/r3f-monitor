@@ -18,7 +18,16 @@ export type WebGpuRendererLike = {
     trackTimestamp?: boolean;
     /** Only present on WebGPURenderer's WebGL2 backend. */
     gl?: WebGL2RenderingContext;
+    getTimestamp?(uid: string): number;
+    /** Newer three only (absent in r183); older versions fall back to a pool lookup. */
+    hasTimestampQuery?(uid: string): boolean;
+    timestampQueryPool?: Record<
+      string,
+      { timestamps?: Map<string, number> } | null | undefined
+    >;
   };
+  /** `InspectorBase` instance, three r181+. Absent on older versions. */
+  inspector?: Record<string, any>;
   info: {
     autoReset: boolean;
     render: {

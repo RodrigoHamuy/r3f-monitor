@@ -7,6 +7,7 @@ import type {
   FrameStats,
   GpuTiming,
   MemoryStats,
+  PassStats,
   PerfBackend,
   RendererInfos,
 } from "./types";
@@ -225,6 +226,14 @@ export class WebGLPerfBackend implements PerfBackend {
 
     countGeoDrawCalls(programs);
     return programs;
+  }
+
+  readPasses(): PassStats[] {
+    return [];
+  }
+
+  stopAnalysis() {
+    this.lastProgramCount = -1;
   }
 
   dispose() {
