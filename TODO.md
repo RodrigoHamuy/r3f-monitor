@@ -11,7 +11,7 @@ next  monitoring over time (session export, perf budgets, marks)
 
 ---
 
-## v3.1 — Fixes + WebGPU parity (done - 01-10-2026)
+## v3.1 — Fixes + WebGPU parity (done - 30-09-2026)
 
 ### Release checklist
 
