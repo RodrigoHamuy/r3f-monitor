@@ -6,20 +6,20 @@ import type {
 } from "../backends/types";
 
 /**
- * Toàn bộ số liệu hiệu năng đã throttle, sẵn sàng để render UI.
- * - fps/cpu/gpu/mem/vram: số "nóng", đổi theo `logsPerSecond` (~10 lần/giây).
- * - gl: thống kê render của frame gần nhất.
- * - infos: thông tin renderer (đứng yên cả phiên).
+ * Throttled perf metrics, ready for UI.
+ * - fps/cpu/gpu/mem/vram: live values, updated at `logsPerSecond` (~10/s).
+ * - gl: render stats of the latest frame.
+ * - infos: renderer info (static for the session).
  */
 export type PerfData = {
   fps: number;
   cpu: number;
   gpu: number;
-  /** ms của compute pass. WebGPU only — WebGL luôn 0. */
+  /** Compute pass time in ms. WebGPU only — always 0 on WebGL. */
   gpuCompute: number;
   mem: number;
   vram: number;
-  /** `measured` (WebGPU, byte thật) hay `estimated` (WebGL, đoán từ scene). */
+  /** `measured` (WebGPU, real bytes) or `estimated` (WebGL, from scene traversal). */
   vramSource: MemorySource;
   gl: {
     calls: number;
@@ -29,21 +29,21 @@ export type PerfData = {
     geometries: number;
     textures: number;
     programs: number;
-    /** Compute dispatch trong frame. WebGL luôn 0. */
+    /** Compute dispatches this frame. Always 0 on WebGL. */
     computeCalls: number;
   };
   infos: {
     version: string;
     renderer: string;
     vendor: string;
-    /** Class renderer: `webgl` = WebGLRenderer, `webgpu` = WebGPURenderer. */
+    /** Renderer class: `webgl` = WebGLRenderer, `webgpu` = WebGPURenderer. */
     backend: BackendKind;
-    /** GPU API thật bên dưới — WebGPURenderer có thể đang chạy backend `webgl2`. */
+    /** Underlying GPU API — WebGPURenderer may be running its `webgl2` backend. */
     api: BackendApi;
   };
 };
 
-/** Gom state thô của store thành PerfData phẳng. */
+/** Flattens raw store state into PerfData. */
 const select = (s: import("../store").State): PerfData => ({
   fps: s.log?.fps ?? 0,
   cpu: s.log?.cpu ?? 0,
@@ -52,25 +52,25 @@ const select = (s: import("../store").State): PerfData => ({
   mem: s.log?.mem ?? 0,
   vram: s.estimatedMemory.vram,
   vramSource: s.estimatedMemory.source,
-  // Đọc snapshot đã chuẩn hoá thay vì chọc vào `s.gl.info`: WebGLRenderer và
-  // WebGPURenderer có shape `info` khác nhau (vd draw call của frame là
-  // `render.calls` bên này nhưng `render.drawCalls` bên kia).
+  // Read the normalized snapshot instead of `s.gl.info`: WebGLRenderer and
+  // WebGPURenderer expose different `info` shapes (e.g. per-frame draw calls are
+  // `render.calls` on one and `render.drawCalls` on the other).
   gl: s.glStats,
   infos: s.infos,
 });
 
 /**
- * Hook đọc số liệu hiệu năng để tự dựng UI ("bring your own UI").
+ * Hook for reading perf metrics to build your own UI ("bring your own UI").
  *
- * Cần render <PerfHeadless /> bên trong <Canvas> để có dữ liệu. Update theo
- * nhịp `logsPerSecond` của PerfHeadless, không re-render mỗi frame.
+ * Requires <PerfHeadless /> inside <Canvas>. Updates at PerfHeadless
+ * `logsPerSecond`, not every frame.
  *
  * @example
- * // Lấy tất cả
+ * // Everything
  * const { fps, gpu, gl, infos } = usePerfData();
  *
  * @example
- * // Chỉ lấy field cần → chỉ re-render khi field đó đổi
+ * // Single field -> re-renders only when it changes
  * const fps = usePerfData((d) => d.fps);
  */
 export function usePerfData(): PerfData;

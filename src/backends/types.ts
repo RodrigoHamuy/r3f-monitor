@@ -1,20 +1,20 @@
 import type { ProgramsPerfs } from "../store";
 
-/** Class renderer mà core đang bám vào. */
+/** Renderer class the core is attached to. */
 export type BackendKind = "webgl" | "webgpu";
 
 /**
- * GPU API thật sự chạy bên dưới.
+ * Underlying GPU API.
  *
- * Lưu ý: `kind === "webgpu"` KHÔNG đồng nghĩa `api === "webgpu"`.
- * WebGPURenderer của three có cả backend WebGL2 và tự rơi về đó khi máy
- * không có `navigator.gpu` — đó là đường fallback mặc định, không phải ngoại lệ.
+ * Note: `kind === "webgpu"` does NOT imply `api === "webgpu"`. three's
+ * WebGPURenderer ships a WebGL2 backend and falls back to it when
+ * `navigator.gpu` is missing — the default path, not an edge case.
  */
 export type BackendApi = "webgl2" | "webgpu";
 
-/** Thống kê render của MỘT frame, đã chuẩn hoá giữa hai backend. */
+/** Per-frame render stats, normalized across backends. */
 export type FrameStats = {
-  /** Draw call trong frame. WebGL: `info.render.calls`. WebGPU: `info.render.drawCalls`. */
+  /** Draw calls this frame. WebGL: `info.render.calls`. WebGPU: `info.render.drawCalls`. */
   calls: number;
   triangles: number;
   points: number;
@@ -22,16 +22,16 @@ export type FrameStats = {
   geometries: number;
   textures: number;
   programs: number;
-  /** Compute dispatch trong frame. WebGL luôn 0. */
+  /** Compute dispatches this frame. Always 0 on WebGL. */
   computeCalls: number;
 };
 
 /**
- * VRAM đo được hay ước lượng.
+ * Whether VRAM is measured or estimated.
  *
- * WebGPURenderer theo dõi byte thật (`info.memory.*Size`); WebGLRenderer không
- * có số đó nên phải duyệt scene mà đoán. Cùng một scene sẽ ra hai con số khác
- * nhau — field này để UI nói rõ thay vì để người dùng tưởng là bug.
+ * WebGPURenderer tracks real bytes (`info.memory.*Size`); WebGLRenderer doesn't,
+ * so VRAM is estimated by traversing the scene. The two differ for the same
+ * scene — the UI uses this to label the source.
  */
 export type MemorySource = "measured" | "estimated";
 
@@ -44,9 +44,9 @@ export type MemoryStats = {
 };
 
 export type GpuTiming = {
-  /** ms của render pass. 0 khi không đo được. */
+  /** Render pass time in ms. 0 when unavailable. */
   render: number;
-  /** ms của compute pass. WebGL luôn 0. */
+  /** Compute pass time in ms. Always 0 on WebGL. */
   compute: number;
 };
 
@@ -59,43 +59,43 @@ export type RendererInfos = {
 };
 
 /**
- * Lớp adapter che khác biệt giữa WebGLRenderer và WebGPURenderer.
+ * Adapter over WebGLRenderer / WebGPURenderer differences.
  *
- * Phần toán (FPS, CPU, throttle, chart) nằm ở `sampler.ts` và dùng chung —
- * backend chỉ lo đọc số từ renderer.
+ * Shared math (FPS, CPU, throttling, chart) lives in `sampler.ts`;
+ * backends only read numbers from the renderer.
  */
 export interface PerfBackend {
   readonly kind: BackendKind;
 
-  /** GPU time có đo được thật không. Với WebGPU chỉ biết chắc sau `start()`. */
+  /** Whether GPU timing is available. On WebGPU, only known after `start()`. */
   readonly gpuTimingAvailable: boolean;
 
-  /** Bật những gì cần bật trên renderer. Đồng bộ — phần async đi qua `readInfos()`. */
+  /** Enables what the renderer needs. Sync — async work goes through `readInfos()`. */
   start(): void;
 
   /**
-   * Vendor/renderer/version. Async vì WebGPU phải hỏi `navigator.gpu.requestAdapter()`.
-   * Chỉ dùng để hiển thị nên về trễ một nhịp không sao.
+   * Vendor/renderer/version. Async because WebGPU needs `navigator.gpu.requestAdapter()`.
+   * Display-only, so arriving a tick late is fine.
    */
   readInfos(): Promise<RendererInfos>;
 
-  /** Gọi trước khi r3f render frame. */
+  /** Called before r3f renders a frame. */
   beginFrame(): void;
 
-  /** Gọi sau khi r3f render xong frame. */
+  /** Called after r3f finishes rendering a frame. */
   endFrame(): void;
 
   readFrameStats(): FrameStats;
   readGpuTiming(): GpuTiming;
   readMemory(): MemoryStats;
 
-  /** Backend có liệt kê được shader program không. WebGPU: false. */
+  /** Whether shader programs can be enumerated. WebGPU: false. */
   readonly supportsProgramAnalysis: boolean;
 
   /**
-   * Quét lại danh sách program. Trả `null` khi không có gì đổi so với lần quét
-   * trước — `countGeoDrawCalls` khá nặng nên chỉ chạy khi số program thay đổi,
-   * giữ đúng hành vi của v2.
+   * Rescans programs. Returns `null` if nothing changed since the last scan —
+   * `countGeoDrawCalls` is expensive, so it only runs when the program count
+   * changes (same as v2).
    */
   analyzePrograms(): ProgramsPerfs | null;
 

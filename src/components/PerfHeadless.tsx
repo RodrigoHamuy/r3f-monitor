@@ -4,15 +4,15 @@ import { useThree } from "@react-three/fiber";
 import { acquirePerf } from "../perfCore";
 import type { PerfProps } from "../types";
 
-// Re-export cho code cũ (vd Graph.tsx) — bộ đếm matrix update giờ sống trong perfCore
+// Re-export for legacy code (e.g. Graph.tsx) — matrix counters now live in perfCore
 export { matriceCount, matriceWorldCount } from "../perfCore";
 
 /**
- * Vỏ React mỏng quanh perfCore (StrictMode-safe).
+ * Thin React wrapper around perfCore (StrictMode-safe).
  *
- * Logic đo nằm trong perfCore — singleton ref-counted, nên mount nhiều
- * instance cùng lúc (vd <PerfHeadless /> + <PerfMonitor />) vẫn chỉ có
- * MỘT hệ đo chạy; instance cuối cùng unmount mới dispose.
+ * perfCore is a ref-counted singleton, so mounting several instances
+ * (e.g. <PerfHeadless /> + <PerfMonitor />) still runs ONE core; it's
+ * disposed when the last instance unmounts.
  */
 export const PerfHeadless: FC<PerfProps> = ({
   logsPerSecond,

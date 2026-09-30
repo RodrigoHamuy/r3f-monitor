@@ -1,28 +1,28 @@
-// ── UI mặc định ──────────────────────────────────────────────
+// ── Default UI ───────────────────────────────────────────────
 export { PerfMonitor } from "./components/PerfMonitor";
 
 // ── Headless / Bring your own UI ─────────────────────────────
 /**
- * Chạy đo, không render UI. Đặt trong <Canvas>.
- * Kết hợp <PerfAdaptive /> để adaptive quality theo FPS.
+ * Measures without rendering UI. Place inside <Canvas>.
+ * Pair with <PerfAdaptive /> for FPS-driven adaptive quality.
  */
 export { PerfHeadless } from "./components/PerfHeadless";
 
 /**
- * Hook đọc số liệu để tự dựng UI.
- * - `usePerfData()` → toàn bộ { fps, cpu, gpu, mem, vram, gl, infos }.
- * - `usePerfData(d => d.fps)` → lấy đúng field cần (chỉ re-render khi field đổi).
+ * Hook for reading metrics to build your own UI.
+ * - `usePerfData()` -> everything { fps, cpu, gpu, mem, vram, gl, infos }.
+ * - `usePerfData(d => d.fps)` -> a single field (re-renders only when it changes).
  */
 export { usePerfData, type PerfData } from "./hooks/usePerfData";
 
 // ── Backend (WebGL / WebGPU) ─────────────────────────────────
 /**
- * r3f-monitor tự nhận renderer đang chạy — WebGLRenderer hay WebGPURenderer —
- * và chọn đường đo tương ứng. Không phải cấu hình gì thêm.
+ * r3f-monitor detects the active renderer — WebGLRenderer or WebGPURenderer —
+ * and picks the matching measurement path. No configuration needed.
  *
- * Lưu ý `backend` khác `api`: WebGPURenderer của three có cả backend WebGL2 và
- * tự rơi về đó khi máy không có `navigator.gpu`, nên `backend: "webgpu"` vẫn có
- * thể đi kèm `api: "webgl2"`.
+ * Note `backend` differs from `api`: three's WebGPURenderer falls back to its
+ * WebGL2 backend when `navigator.gpu` is missing, so `backend: "webgpu"` can
+ * come with `api: "webgl2"`.
  */
 export type {
   BackendApi,
@@ -33,9 +33,9 @@ export type {
 
 // ── Adaptive quality ─────────────────────────────────────────
 /**
- * Điều chỉnh `factor` (0-1) để giảm/tăng chất lượng theo FPS.
- * Lấy số liệu {fps, gpu, cpu} từ PerfHeadless — cần <PerfHeadless /> trong
- * <Canvas> (giống usePerfData). API tương thích drei <PerformanceMonitor>.
+ * Adjusts `factor` (0-1) to lower/raise quality based on FPS.
+ * Reads {fps, gpu, cpu} from PerfHeadless — needs <PerfHeadless /> inside
+ * <Canvas> (like usePerfData). drei <PerformanceMonitor>-compatible API.
  */
 export {
   PerfAdaptive,
@@ -51,9 +51,9 @@ export { detectRefreshRate } from "./performance/detectRefreshRate";
 
 // ── GPU tier ─────────────────────────────────────────────────
 /**
- * Phát hiện tier GPU (0-3) qua @pmndrs/detect-gpu — chọn chất lượng
- * khởi điểm theo máy, rồi để PerfAdaptive tinh chỉnh runtime.
- * Hook suspend — component dùng nó cần nằm trong <Suspense>.
+ * Detects GPU tier (0-3) via @pmndrs/detect-gpu to pick a starting quality
+ * per device; PerfAdaptive fine-tunes at runtime.
+ * Suspends — components using it must be inside <Suspense>.
  */
 export {
   useGpuTier,

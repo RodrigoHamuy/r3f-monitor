@@ -9,7 +9,7 @@ import type {
   RendererInfos,
 } from "./types";
 
-/** `TimestampQuery.RENDER` / `.COMPUTE` của three chỉ là hai string này. */
+/** three's `TimestampQuery.RENDER` / `.COMPUTE` are just these strings. */
 const RENDER = "render" as const;
 const COMPUTE = "compute" as const;
 
@@ -21,26 +21,26 @@ type GpuAdapterInfo = {
 };
 
 /**
- * Adapter cho `WebGPURenderer` — phủ CẢ backend WebGPU lẫn backend WebGL2 của nó,
- * vì three expose chung một API cho hai đường (`WebGLTimestampQueryPool` dùng
- * `EXT_disjoint_timer_query_webgl2` bên dưới, nhưng lộ ra cùng
+ * Adapter for `WebGPURenderer` — covers BOTH its WebGPU and WebGL2 backends,
+ * since three exposes one API for both (`WebGLTimestampQueryPool` uses
+ * `EXT_disjoint_timer_query_webgl2` underneath but surfaces the same
  * `resolveTimestampsAsync()` / `info.render.timestamp`).
  */
 export class WebGpuPerfBackend implements PerfBackend {
   readonly kind = "webgpu" as const;
 
   /**
-   * Node material biên dịch thẳng ra pipeline WGSL; `info.memory.programs` chỉ là
-   * con số, không phải mảng có `cacheKey` để ghép ngược về material. Đường đi cho
-   * bản sau là `renderer.inspector` (three r185+).
+   * Node materials compile straight to WGSL pipelines; `info.memory.programs` is
+   * just a count, with no `cacheKey` array to map back to materials. The path
+   * forward is `renderer.inspector` (three r185+).
    */
   readonly supportsProgramAnalysis = false;
 
   private gl: WebGpuRendererLike;
   private timingOn = false;
 
-  // `_scene` chưa dùng: bản phân tích program dựa trên `renderer.inspector` sẽ cần,
-  // giữ chữ ký khớp với WebGLPerfBackend cho `createBackend`.
+  // `_scene` is unused for now: program analysis via `renderer.inspector` will
+  // need it; keeps the signature in line with WebGLPerfBackend for `createBackend`.
   constructor(gl: WebGpuRendererLike, _scene: THREE.Scene) {
     this.gl = gl;
   }
@@ -52,11 +52,11 @@ export class WebGpuPerfBackend implements PerfBackend {
   start() {
     this.gl.info.autoReset = false;
 
-    // `trackTimestamp` mặc định false và thường được truyền lúc `new WebGPURenderer()`.
-    // Bật được sau `init()` vì three request TẤT CẢ feature adapter hỗ trợ khi tạo
-    // device (`requiredFeatures: supportedFeatures`), không gate theo cờ này — nên
-    // device đã sẵn `timestamp-query`. Nhờ vậy người dùng không phải sửa chỗ khởi
-    // tạo renderer để đo được GPU.
+    // `trackTimestamp` defaults to false and is usually set in `new WebGPURenderer()`.
+    // Enabling it after `init()` works because three requests ALL adapter-supported
+    // features at device creation (`requiredFeatures: supportedFeatures`), not gated
+    // by this flag — so `timestamp-query` is already available. Users don't need to
+    // change renderer setup to get GPU timing.
     try {
       if (this.gl.hasFeature("timestamp-query")) {
         this.gl.backend.trackTimestamp = true;
@@ -71,8 +71,8 @@ export class WebGpuPerfBackend implements PerfBackend {
     const isWebGpu = this.gl.backend.isWebGPUBackend === true;
 
     if (!isWebGpu) {
-      // Rơi về backend WebGL2 thì lại có context WebGL thật để hỏi — dùng nó thay
-      // vì trả "Unknown", vì đây là đường mặc định trên máy không có WebGPU.
+      // On the WebGL2 fallback there's a real WebGL context to query — use it rather
+      // than returning "Unknown", since this is the default path without WebGPU.
       const ctx = this.gl.backend.gl;
       const debugInfo: any = ctx?.getExtension("WEBGL_debug_renderer_info");
 
@@ -93,15 +93,15 @@ export class WebGpuPerfBackend implements PerfBackend {
       };
     }
 
-    // `getContext()` của Renderer trả `unknown`, không có WEBGL_debug_renderer_info.
-    // Nguồn duy nhất cho vendor/device là adapter info.
+    // Renderer's `getContext()` returns `unknown`, no WEBGL_debug_renderer_info.
+    // Adapter info is the only source for vendor/device.
     let info: GpuAdapterInfo = {};
     try {
       const adapter = await navigator.gpu?.requestAdapter();
       info = ((adapter as unknown as { info?: GpuAdapterInfo })?.info ??
         {}) as GpuAdapterInfo;
     } catch {
-      /* giữ giá trị mặc định bên dưới */
+      /* keep the defaults below */
     }
 
     const renderer =
@@ -125,10 +125,10 @@ export class WebGpuPerfBackend implements PerfBackend {
   endFrame() {
     if (!this.timingOn) return;
 
-    // three KHÔNG tự resolve: `info[type].timestamp` chỉ được ghi bên trong
-    // `resolveTimestampsAsync()`. Không gọi thì query pool đầy (2048) rồi warn.
-    // Fire-and-forget — three tự chặn gọi chồng bằng cờ `pendingResolve`, nên kết
-    // quả về trễ vài frame. Chấp nhận được với một HUD.
+    // three does NOT auto-resolve: `info[type].timestamp` is only written inside
+    // `resolveTimestampsAsync()`. Without calling it the query pool fills (2048) and warns.
+    // Fire-and-forget — three guards overlapping calls via `pendingResolve`, so
+    // results lag a few frames. Fine for a HUD.
     void this.gl.resolveTimestampsAsync(RENDER).catch(() => {});
     if (this.gl.info.compute.frameCalls > 0) {
       void this.gl.resolveTimestampsAsync(COMPUTE).catch(() => {});
@@ -138,7 +138,7 @@ export class WebGpuPerfBackend implements PerfBackend {
   readFrameStats(): FrameStats {
     const { render, compute, memory } = this.gl.info;
     return {
-      // `render.calls` là cộng dồn từ lúc chạy; số của FRAME là `drawCalls`.
+      // `render.calls` is cumulative since start; the per-FRAME count is `drawCalls`.
       calls: render.drawCalls,
       triangles: render.triangles,
       points: render.points,
@@ -157,7 +157,7 @@ export class WebGpuPerfBackend implements PerfBackend {
     };
   }
 
-  /** Byte thật do three theo dõi — không phải ước lượng như đường WebGL. */
+  /** Real bytes tracked by three — not an estimate like the WebGL path. */
   readMemory(): MemoryStats {
     const memory = this.gl.info.memory;
     const geo = memory.attributesSize + memory.indexAttributesSize;

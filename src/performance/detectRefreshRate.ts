@@ -1,18 +1,17 @@
 /**
- * Đo tần số quét màn hình (Hz) qua nhịp requestAnimationFrame.
+ * Estimates display refresh rate (Hz) from requestAnimationFrame timing.
  *
- * Không có browser API nào expose refresh rate, nên suy ra từ khoảng cách
- * giữa các frame rAF. Dùng median của các khoảng NGẮN NHẤT thay vì trung
- * bình: dù main thread đang bận (app mount, shader compile), chỉ cần vài
- * cặp frame chạy đúng nhịp là ra chu kỳ màn hình thật; đồng thời median
- * chống outlier jitter (cặp frame dính nhau bất thường).
+ * No browser API exposes refresh rate, so it's inferred from rAF intervals.
+ * Uses the median of the SHORTEST intervals instead of the mean: even with a
+ * busy main thread (app mount, shader compile), a few on-time frame pairs reveal
+ * the real period, and the median rejects jitter outliers.
  *
- * Lưu ý: tab ẩn / tiết kiệm pin làm rAF bị throttle -> số đo thấp hơn thật.
- * Nên kết hợp với nguồn khác (vd max FPS từng thấy) thay vì tin tuyệt đối.
+ * Note: hidden tabs / power saving throttle rAF -> readings come out low.
+ * Combine with another source (e.g. max FPS seen) rather than trusting it alone.
  */
 export function detectRefreshRate(samples = 30): Promise<number> {
   return new Promise((resolve) => {
-    const skip = 5; // bỏ các frame đầu — rAF mới khởi động hay jitter
+    const skip = 5; // skip warm-up frames — early rAF is jittery
     const intervals: number[] = [];
     let last = 0;
     let count = 0;

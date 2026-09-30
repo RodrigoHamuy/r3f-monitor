@@ -39,12 +39,12 @@ const addMuiPerfID = (
 };
 
 /**
- * Adapter cho `THREE.WebGLRenderer` — đường đo của v2.
+ * Adapter for `THREE.WebGLRenderer` — the v2 measurement path.
  *
- * GPU time đi qua `EXT_disjoint_timer_query_webgl2` tự quản: mở query trước
- * frame, đóng sau frame, đẩy vào hàng đợi rồi đọc kết quả ở các frame sau (query
- * không sẵn sàng ngay trong frame). Nghĩa là số GPU trễ vài frame — giống hệt
- * đường WebGPU, nên hai backend nhất quán về mặt này.
+ * GPU time uses a self-managed `EXT_disjoint_timer_query_webgl2`: open a query
+ * before the frame, close it after, enqueue, and read results on later frames
+ * (queries aren't ready within the same frame). GPU numbers lag a few frames —
+ * same as the WebGPU path, so both backends behave consistently.
  */
 export class WebGLPerfBackend implements PerfBackend {
   readonly kind = "webgl" as const;
@@ -103,7 +103,7 @@ export class WebGLPerfBackend implements PerfBackend {
     const ext = this.ext;
     if (!ext) return;
 
-    // Đọc kết quả các query đã xong trước khi mở query mới.
+    // Read finished queries before opening a new one.
     this.drainQueries();
 
     if (this.activeQuery) ctx.endQuery(ext.TIME_ELAPSED_EXT);
@@ -173,9 +173,8 @@ export class WebGLPerfBackend implements PerfBackend {
   }
 
   /**
-   * Ghép `gl.info.programs[]` với material trong scene qua define `muiPerf`
-   * nhét vào shader — chỉ WebGL mới làm được, node material của WebGPU không
-   * đi qua đường này.
+   * Maps `gl.info.programs[]` to scene materials via a `muiPerf` define injected
+   * into the shader. WebGL only — WebGPU node materials don't take this path.
    */
   analyzePrograms(): ProgramsPerfs | null {
     const currentObjectWithMaterials: Record<string, any> = {};
@@ -217,10 +216,10 @@ export class WebGLPerfBackend implements PerfBackend {
       } as ProgramsPerf);
     });
 
-    // Phải so bằng KẾT QUẢ, không so bằng `info.programs.length`: lần quét đầu
-    // mới nhét define `muiPerf` vào material và bắt recompile, nên cacheKey chưa
-    // chứa nó — map ra rỗng. Số program thì đã đúng ngay từ đầu, gate theo nó sẽ
-    // chặn mất lần quét thứ hai và danh sách rỗng vĩnh viễn.
+    // Compare RESULTS, not `info.programs.length`: the first scan injects the
+    // `muiPerf` define and forces a recompile, so cacheKeys don't contain it yet and
+    // the map is empty. The program count is already correct, so gating on it would
+    // skip the second scan and leave the list empty forever.
     if (programs.size === this.lastProgramCount) return null;
     this.lastProgramCount = programs.size;
 
@@ -238,7 +237,7 @@ export class WebGLPerfBackend implements PerfBackend {
         ctx.deleteQuery(this.activeQuery);
       }
     } catch {
-      /* query có thể đã không còn active */
+      /* query may no longer be active */
     }
     this.activeQuery = null;
 

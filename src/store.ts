@@ -17,9 +17,9 @@ export type EstimatedMemory = {
   geo: number;
   ram: number;
   /**
-   * `measured` khi renderer theo dõi byte thật (WebGPU), `estimated` khi phải
-   * duyệt scene mà đoán (WebGL). Cùng một scene, hai backend cho hai con số —
-   * field này để UI nói rõ thay vì để người dùng tưởng là bug.
+   * `measured`: real byte tracking by the renderer (WebGPU).
+   * `estimated`: derived by traversing the scene (WebGL).
+   * Backends report different numbers for the same scene; the UI labels the source.
    */
   source: MemorySource;
 };
@@ -49,7 +49,7 @@ type Logger = {
   i: number;
   maxMemory: number;
   gpu: number;
-  /** ms của compute pass. WebGPU only — WebGL luôn 0. */
+  /** Compute pass time in ms. WebGPU only — always 0 on WebGL. */
   gpuCompute: number;
   mem: number;
   cpu: number;
@@ -66,7 +66,7 @@ type GLLogger = {
   counts: number;
 };
 
-/** Thống kê frame đã chuẩn hoá giữa hai backend, cập nhật theo `logsPerSecond`. */
+/** Backend-normalized frame stats, updated at `logsPerSecond`. */
 export type GlStats = FrameStats;
 
 export type State = {
@@ -103,9 +103,8 @@ export type State = {
   };
   glStats: GlStats;
   /**
-   * Renderer thật đang chạy. Có thể là WebGLRenderer HOẶC WebGPURenderer —
-   * đọc số liệu qua `glStats` thay vì chọc thẳng vào đây, vì hai renderer có
-   * shape `info` khác nhau.
+   * Active renderer: WebGLRenderer OR WebGPURenderer. Read stats via `glStats`,
+   * not `info` directly — the two renderers expose different `info` shapes.
    */
   gl: AnyRenderer | undefined;
   scene: THREE.Scene | undefined;
@@ -148,7 +147,7 @@ export const usePerfImpl = createWithEqualityFn<State>((_set, get): any => {
     return {
       sessionTime,
       infos,
-      memory: estimatedMemory, // Thêm memory vào report
+      memory: estimatedMemory, // include memory in the report
       log: logAverage,
       gl: glAverage,
       max,
