@@ -19,7 +19,7 @@ export type SampleLog = {
   gpuCompute: number;
   mem: number;
   fps: number;
-  /** FPS chưa qua EMA — cho adaptive quality phản ứng nhanh. */
+  /** FPS before EMA smoothing — lets adaptive quality react faster. */
   rawFps: number;
   duration: number;
   maxMemory: number;
@@ -44,13 +44,13 @@ const average = (arr: number[]) =>
   arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
 /**
- * Phần đo KHÔNG dính renderer: FPS (cửa sổ trượt 1 giây + EMA), CPU wall-clock,
- * throttle theo `logsPerSecond`, và chart vòng.
+ * Renderer-agnostic sampling: FPS (1s sliding window + EMA), CPU wall-clock,
+ * `logsPerSecond` throttling and a circular chart buffer.
  *
- * Số GPU không do lớp này lấy — backend đọc rồi truyền vào `nextFrame()`. Nhờ vậy
- * WebGL và WebGPU dùng chung y hệt bộ toán này, chỉ khác nguồn số.
+ * GPU timings are read by the backend and passed to `nextFrame()`, so WebGL
+ * and WebGPU share the same math.
  *
- * (Tách ra từ `GLPerf` trong internal.ts của v2.)
+ * (Extracted from v2's `GLPerf` in internal.ts.)
  */
 export class PerfSampler {
   paused = false;
@@ -86,12 +86,12 @@ export class PerfSampler {
     rawFps: [],
   };
 
-  // FPS: cửa sổ trượt 1 giây thật
+  // FPS: 1s sliding window
   private frameTimes: number[] = [];
   private frameTimesHead = 0;
   private smoothFps = 0;
 
-  // CPU: performance.now() cộng dồn
+  // CPU: accumulated performance.now() deltas
   private cpuStartTime = 0;
   private totalCpuDuration = 0;
 
@@ -109,8 +109,8 @@ export class PerfSampler {
   }
 
   /**
-   * FPS số thực trên cửa sổ 1 giây (frameCount * 1000 / elapsed).
-   * Trả số lẻ (vd 120.3) thay vì đếm nguyên -> không nhảy +/-1.
+   * FPS over a real 1s window (frameCount * 1000 / elapsed).
+   * Returns a float (e.g. 120.3) to avoid +/-1 jitter.
    */
   private calculateFps(): number {
     const currentTime = this.now();
@@ -125,7 +125,7 @@ export class PerfSampler {
       this.frameTimesHead++;
     }
 
-    // Compact để giới hạn bộ nhớ
+    // Compact to bound memory
     if (this.frameTimesHead > 128) {
       this.frameTimes = this.frameTimes.slice(this.frameTimesHead);
       this.frameTimesHead = 0;
@@ -138,22 +138,43 @@ export class PerfSampler {
     const elapsed = currentTime - oldest;
     if (elapsed <= 0) return count;
 
-    // (count - 1) khoảng cách trong elapsed ms
+    // (count - 1) intervals over elapsed ms
     return ((count - 1) * 1000) / elapsed;
   }
 
-  /** Bắt đầu đo wall-clock của phần render. */
+  /**
+   * Call when the loop restarts after idle (frameloop="demand", hidden tab, ...).
+   * Rebases timestamps to now so the idle gap isn't logged and pushChart
+   * doesn't backfill hundreds of chart slots in one frame.
+   */
+  resume() {
+    const t = this.now();
+    this.paramTime = t;
+    this.paramFrame = this.frameId;
+    this.chartTime = t;
+    this.totalCpuDuration = 0;
+    this.logsAccums = {
+      mem: [],
+      gpu: [],
+      gpuCompute: [],
+      cpu: [],
+      fps: [],
+      rawFps: [],
+    };
+  }
+
+  /** Start wall-clock timing of the render pass. */
   begin() {
     this.cpuStartTime = this.now();
   }
 
-  /** Cộng dồn wall-clock vào tổng CPU của frame. */
+  /** Accumulate wall-clock into the frame's CPU total. */
   end() {
     this.totalCpuDuration += this.now() - this.cpuStartTime;
   }
 
   /**
-   * Chốt một frame. `gpu`/`gpuCompute` tính bằng ms, do backend cung cấp.
+   * Finalize a frame. `gpu`/`gpuCompute` are in ms, provided by the backend.
    */
   nextFrame(now: number, gpu: number, gpuCompute: number) {
     this.frameId++;
@@ -161,7 +182,7 @@ export class PerfSampler {
     const duration = t - this.paramTime;
 
     const rawFps = this.calculateFps();
-    // EMA: làm mượt FPS hiển thị.
+    // EMA smoothing for displayed FPS
     this.smoothFps =
       this.smoothFps === 0
         ? rawFps
@@ -216,7 +237,7 @@ export class PerfSampler {
       }
     }
 
-    // reset CPU tích lũy cho frame kế tiếp
+    // reset accumulated CPU for the next frame
     this.totalCpuDuration = 0;
 
     this.pushChart(t, fps, cpu, gpu);

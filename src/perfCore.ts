@@ -19,12 +19,12 @@ export const matriceWorldCount = { value: 0 };
 export const matriceCount = { value: 0 };
 
 /**
- * Core đo hiệu năng — singleton ref-counted, không dính React.
+ * Perf measurement core — ref-counted singleton, React-agnostic.
  *
- * `acquirePerf()` lần đầu sẽ chọn backend theo renderer đang chạy (WebGLRenderer
- * hay WebGPURenderer) rồi hook vào render loop; các lần acquire sau chỉ tăng biến
- * đếm. Hàm release trả về giảm đếm; về 0 thì dispose sạch. Nhờ đó mount
- * <PerfHeadless /> lẫn <PerfMonitor /> cùng lúc vẫn chỉ có MỘT hệ đo.
+ * The first `acquirePerf()` picks a backend for the active renderer
+ * (WebGLRenderer / WebGPURenderer) and hooks into the render loop; later calls
+ * only bump the ref count. The returned release decrements it and disposes at 0,
+ * so <PerfHeadless /> and <PerfMonitor /> mounted together share ONE core.
  */
 let refCount = 0;
 let current: {
@@ -45,7 +45,7 @@ export function acquirePerf(
   } else {
     if (current.gl !== gl) {
       console.warn(
-        "[r3f-monitor] acquirePerf: core đang đo trên renderer khác — chưa hỗ trợ multi-canvas, dùng core hiện tại.",
+        "[r3f-monitor] acquirePerf: core is already bound to another renderer — multi-canvas is not supported, reusing the existing core.",
       );
     } else if (
       current.options.logsPerSecond !== options.logsPerSecond ||
@@ -55,7 +55,7 @@ export function acquirePerf(
       current.options.chart?.hz !== options.chart?.hz
     ) {
       console.warn(
-        "[r3f-monitor] acquirePerf: đã có core chạy với options khác — options của instance đầu tiên được giữ.",
+        "[r3f-monitor] acquirePerf: core is already running with different options — keeping the first instance's options.",
       );
     }
   }
@@ -72,7 +72,7 @@ export function acquirePerf(
   };
 }
 
-/** Khởi tạo toàn bộ hệ đo. Trả về hàm dispose. */
+/** Initializes the measurement core. Returns a dispose function. */
 function createCore(
   gl: AnyRenderer,
   scene: THREE.Scene,
@@ -89,9 +89,9 @@ function createCore(
 
   if (deepAnalyze && !backend.supportsProgramAnalysis) {
     console.warn(
-      "[r3f-monitor] deepAnalyze chưa hỗ trợ WebGPURenderer: node material biên dịch " +
-        "thẳng ra pipeline WGSL, không có danh sách program để ghép ngược về material. " +
-        "Các số liệu còn lại vẫn chạy bình thường.",
+      "[r3f-monitor] deepAnalyze is not supported on WebGPURenderer: node materials compile " +
+        "straight to WGSL pipelines, with no program list to map back to materials. " +
+        "All other metrics still work.",
     );
   }
 
@@ -155,9 +155,8 @@ function createCore(
     },
   });
 
-  // Vendor/renderer: async trên WebGPU (phải hỏi adapter), nên chỉ hiển thị nên
-  // về trễ một nhịp không sao — đổi lại acquirePerf giữ được chữ ký đồng bộ và
-  // hợp đồng cleanup của useEffect không phải đụng tới.
+  // Vendor/renderer info is async on WebGPU (adapter query); showing it a tick
+  // late is fine and keeps acquirePerf synchronous for useEffect cleanup.
   setPerf({ startTime: window.performance.now() });
   backend
     .readInfos()
@@ -190,9 +189,12 @@ function createCore(
     };
   }
 
-  // PRE frame: reset stats + mở đo CPU/GPU
+  // PRE frame: reset stats + start CPU/GPU timing
   const unsubEffect = addEffect(() => {
-    sampler.paused = false;
+    if (sampler.paused) {
+      sampler.paused = false;
+      sampler.resume();
+    }
     if (getPerf().paused) setPerf({ paused: false });
 
     sampler.begin();
@@ -202,7 +204,7 @@ function createCore(
     matriceCount.value = 0;
   });
 
-  // AFTER frame: đóng đo + chốt frame + deepAnalyze
+  // AFTER frame: stop timing + commit frame + deepAnalyze
   const unsubAfter = addAfterEffect(() => {
     backend.endFrame();
     sampler.end();

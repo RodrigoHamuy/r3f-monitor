@@ -112,13 +112,13 @@ export function ChartStats({
       const ox = p * (panelW + gap);
       const { fg, bg } = THEMES[key];
 
-      // 1. Vẽ nền
+      // 1. Background
       ctx.fillStyle = bg;
       ctx.globalAlpha = opacity;
       ctx.fillRect(ox, 0, panelW, PANEL_H);
       ctx.globalAlpha = 1;
 
-      // 2. BACKFILL DỮ LIỆU CŨ ĐỂ KHÔNG BỊ CHẠY LẠI TỪ ĐẦU
+      // 2. Backfill existing history so the graph doesn't restart empty
       const series = perf.chart.data[key];
       let min = Infinity;
       let max = 0;
@@ -156,7 +156,7 @@ export function ChartStats({
   ]);
 
   useEffect(() => {
-    if (!show) return;
+    if (!show || paused) return;
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
@@ -166,7 +166,6 @@ export function ChartStats({
 
     function drawFrame(timestamp: number) {
       raf = requestAnimationFrame(drawFrame);
-      if (paused) return;
 
       const delta = timestamp - lastTime;
       if (delta < INTERVAL) return;
