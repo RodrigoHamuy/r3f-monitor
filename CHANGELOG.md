@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## 3.1.0 - 01-10-2026
+## 3.1.0 - 30-09-2026
 
 **`deepAnalyze` on WebGPU, and `frameloop="demand"` support.** Closes the one
 feature gap v3 left on WebGPU and fixes the monitor staying empty on on-demand
