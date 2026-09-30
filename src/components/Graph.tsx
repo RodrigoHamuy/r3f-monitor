@@ -1,6 +1,6 @@
-import { type FC, useMemo, useRef } from "react";
+import { type FC, useEffect, useMemo, useRef } from "react";
 import { matriceCount, matriceWorldCount } from "./PerfHeadless";
-import { Canvas, useFrame, type Viewport } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type Viewport } from "@react-three/fiber";
 import { getPerf, usePerf } from "../store";
 import * as THREE from "three";
 import type { PerfUIProps } from "../types";
@@ -31,8 +31,7 @@ const ChartCurve: FC<PerfUIProps> = ({
 
   const dummyVec3 = useMemo(() => new THREE.Vector3(0, 0, 0), []);
 
-  // Hàm này tự động tính lại vị trí dựa trên viewport (w, h)
-  // Khi Canvas giãn ra 100%, viewport.width tăng lên -> Graph tự giãn ra
+  // Recompute positions from viewport (w, h) so the graph stretches with the canvas.
   const updatePoints = (
     element: string,
     factor: number = 1,
@@ -55,7 +54,7 @@ const ChartCurve: FC<PerfUIProps> = ({
         if (chart[id] > maxVal) {
           maxVal = chart[id] * factor;
         }
-        // Logic tính toán X trải dài theo w (width)
+        // X spans the full viewport width
         dummyVec3.set(
           padding + (i / (len - 1)) * (w - padding * 2) - w / 2,
           ((Math.min(100, chart[id]) * factor) / 100) *
@@ -153,7 +152,6 @@ export const ChartUI: FC<PerfUIProps> = ({
   minimal,
 }) => {
   const canvas = useRef<any>(undefined);
-  const paused = usePerf((state) => state.paused);
 
   return (
     <div
@@ -164,6 +162,7 @@ export const ChartUI: FC<PerfUIProps> = ({
     >
       <Canvas
         ref={canvas}
+        frameloop="never"
         orthographic
         camera={{ rotation: [0, 0, 0] }}
         dpr={antialias ? [1, 2] : 1}
@@ -187,12 +186,9 @@ export const ChartUI: FC<PerfUIProps> = ({
           height: "100%",
         }}
       >
-        {!paused ? (
-          <>
-            <Renderer />
-            {showGraph && <ChartCurve minimal={minimal} chart={chart} />}
-          </>
-        ) : null}
+        <ChartDriver />
+        <Renderer />
+        {showGraph && <ChartCurve minimal={minimal} chart={chart} />}
       </Canvas>
     </div>
   );
@@ -207,6 +203,34 @@ const Renderer = () => {
     matriceWorldCount.value = 0;
     matriceCount.value = 0;
   }, Infinity);
+
+  return null;
+};
+
+/**
+ * Renders the chart root via its own rAF (frameloop="never").
+ * An "always" root keeps R3F's global loop running: demand scenes never idle,
+ * addTail never fires, and the sampler ends up measuring this canvas.
+ * advance(t, false) renders this root only, without global effects.
+ */
+const CHART_INTERVAL = 1000 / 30;
+const ChartDriver = () => {
+  const advance = useThree((s) => s.advance);
+  const paused = usePerf((s) => s.paused);
+
+  useEffect(() => {
+    if (paused) return;
+    let raf = 0;
+    let last = 0;
+    const tick = (t: number) => {
+      raf = requestAnimationFrame(tick);
+      if (t - last < CHART_INTERVAL) return;
+      last = t;
+      advance(t, false);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [advance, paused]);
 
   return null;
 };

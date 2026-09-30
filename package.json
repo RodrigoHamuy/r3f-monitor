@@ -7,7 +7,14 @@
         "type": "git",
         "url": "git+https://github.com/anhldh/r3f-monitor.git"
     },
-    "homepage": "https://github.com/anhldh/r3f-monitor",
+    "homepage": "https://anhldh.github.io/r3f-monitor",
+    "bugs": {
+        "url": "https://github.com/anhldh/r3f-monitor/issues"
+    },
+    "author": {
+        "name": "anhldh",
+        "url": "https://anhldh.com"
+    },
     "keywords": [
         "react-three-fiber",
         "r3f",

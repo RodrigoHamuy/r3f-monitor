@@ -49,13 +49,13 @@ export const countGeoDrawCalls = (programs: ProgramsPerfs) => {
         if (mesh.isLineSegments) {
           countInstanceRatio /= 2;
         } else if (mesh.isLineLoop) {
-          // LineLoop: mỗi vertex tạo 1 segment (khép vòng) — ratio giữ nguyên 1
+          // LineLoop: each vertex create 1 segment — ratio 1
         } else {
-          // Line: n vertex → n-1 segments (giữ nguyên công thức từ bản gốc)
+          // Line: n vertex → n-1 segments
           countInstanceRatio -= 1;
         }
       } else if (mesh.isPoints) {
-        // Points: mỗi vertex 1 point — ratio giữ nguyên 1
+        // Points: each vertex 1 point — ratio 1
         type = "Point";
       } else if (mesh.isSprite) {
         type = "Triangle";

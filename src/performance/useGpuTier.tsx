@@ -12,7 +12,7 @@ export const useGpuTier = (options?: GetGPUTier): TierResult =>
     ["r3f-monitor/gpu-tier", JSON.stringify(options ?? {})],
   );
 
-/** Drei-compatible alias — dùng `useGpuTier` cho code mới */
+/** Drei-compatible alias — prefer `useGpuTier` in new code */
 export const useDetectGPU = useGpuTier;
 
 export type GpuTierProps = {

@@ -1,33 +1,33 @@
 export type AdaptiveCallbacks = {
-  /** Khi hiệu năng cao hơn upper bound (tốt) */
+  /** Called when performance is above the upper bound (good) */
   onIncline?: (engine: AdaptiveEngine) => void;
-  /** Khi hiệu năng thấp hơn lower bound (xấu) */
+  /** Called when performance is below the lower bound (bad) */
   onDecline?: (engine: AdaptiveEngine) => void;
-  /** Khi factor thay đổi (do incline/decline) */
+  /** Called when factor changes (via incline/decline) */
   onChange?: (engine: AdaptiveEngine) => void;
-  /** Khi số flipflops vượt ngưỡng — hệ thống không ổn định, nên set baseline cố định */
+  /** Called when flipflops exceed the limit — unstable, pin a fixed baseline */
   onFallback?: (engine: AdaptiveEngine) => void;
 };
 
 export type AdaptiveEngineOptions = AdaptiveCallbacks & {
-  /** Số mẫu FPS gom lại trước mỗi lần ra quyết định, 10 */
+  /** FPS samples collected per decision, default 10 */
   iterations?: number;
-  /** Tỉ lệ mẫu phải vượt bound để trigger incline/decline, 0.75 */
+  /** Fraction of samples that must cross a bound to incline/decline, default 0.75 */
   threshold?: number;
-  /** Bước cộng/trừ vào factor mỗi lần incline/decline, 0.1 */
+  /** Factor step per incline/decline, default 0.1 */
   step?: number;
-  /** Giá trị factor khởi điểm (0-1), 0.5 */
+  /** Initial factor (0-1), default 0.5 */
   factor?: number;
-  /** Số lần incline/decline tối đa trước khi fallback, Infinity */
+  /** Max incline/decline flips before fallback, default Infinity */
   flipflops?: number;
-  /** Nhận refreshrate, trả [lower, upper] — vùng giữa 2 bound là vùng ổn định */
+  /** Maps refresh rate to [lower, upper]; between the bounds is the stable zone */
   bounds?: (refreshrate: number) => [lower: number, upper: number];
 };
 
 /**
- * Logic adaptive quality thuần (không React, không đo đạc).
- * Nhận mẫu FPS từ ngoài qua `addSample()`, tự quyết định incline/decline
- * và cập nhật `factor` (0-1). Port từ drei <PerformanceMonitor>.
+ * Pure adaptive-quality logic (no React, no measuring).
+ * Takes FPS samples via `addSample()`, decides incline/decline and updates
+ * `factor` (0-1). Ported from drei <PerformanceMonitor>.
  */
 export class AdaptiveEngine {
   iterations: number;
@@ -41,17 +41,17 @@ export class AdaptiveEngine {
   onChange?: (engine: AdaptiveEngine) => void;
   onFallback?: (engine: AdaptiveEngine) => void;
 
-  /** FPS của mẫu gần nhất */
+  /** FPS of the latest sample */
   fps = 0;
-  /** GPU time (ms) của mẫu gần nhất — so với `cpu` để biết đang GPU-bound hay CPU-bound */
+  /** GPU time (ms) of the latest sample — compare with `cpu` for GPU- vs CPU-bound */
   gpu = 0;
-  /** CPU time (ms) của mẫu gần nhất */
+  /** CPU time (ms) of the latest sample */
   cpu = 0;
-  /** Hệ số chất lượng hiện tại, 0-1 */
+  /** Current quality factor, 0-1 */
   factor: number;
-  /** Ước lượng refresh rate màn hình: max(seed từ detectRefreshRate, FPS cao nhất từng thấy) */
+  /** Estimated display refresh rate: max(detectRefreshRate seed, highest FPS seen) */
   refreshrate = 0;
-  /** Các mẫu FPS trong lượt đánh giá hiện tại */
+  /** FPS samples in the current evaluation window */
   averages: number[] = [];
   index = 0;
   flipped = 0;
@@ -85,19 +85,19 @@ export class AdaptiveEngine {
     this.onFallback = onFallback;
   }
 
-  /** Seed refreshrate từ nguồn đo ngoài (vd detectRefreshRate) — chỉ tăng, không giảm. */
+  /** Seeds refresh rate from an external source (e.g. detectRefreshRate) — only increases. */
   seedRefreshrate(hz: number) {
     this.refreshrate = Math.max(this.refreshrate, hz);
   }
 
-  /** Đăng ký callbacks phụ (cho hook). Trả về hàm unsubscribe. */
+  /** Registers extra callbacks (for hooks). Returns an unsubscribe function. */
   subscribe(callbacks: AdaptiveCallbacks) {
     const key = Symbol();
     this.subscriptions.set(key, callbacks);
     return () => void this.subscriptions.delete(key);
   }
 
-  /** Nạp một mẫu. Đủ `iterations` mẫu thì đánh giá và reset. gpu/cpu (ms) tuỳ chọn, chỉ để tham khảo trong callbacks. */
+  /** Adds a sample; evaluates and resets once `iterations` is reached. gpu/cpu (ms) are optional, informational only. */
   addSample(fps: number, gpu = 0, cpu = 0) {
     if (this.fallback) return;
 
@@ -113,13 +113,13 @@ export class AdaptiveEngine {
     const upperCount = this.averages.filter((v) => v >= upper).length;
     const lowerCount = this.averages.filter((v) => v < lower).length;
 
-    // Incline: đa số mẫu vượt upper bound -> tăng chất lượng
+    // Incline: most samples above upper bound -> raise quality
     if (upperCount > this.iterations * this.threshold) {
       this.factor = Math.min(1, this.factor + this.step);
       this.flipped++;
       this.emit("onIncline");
     }
-    // Decline: đa số mẫu dưới lower bound -> giảm chất lượng
+    // Decline: most samples below lower bound -> lower quality
     if (lowerCount > this.iterations * this.threshold) {
       this.factor = Math.max(0, this.factor - this.step);
       this.flipped++;

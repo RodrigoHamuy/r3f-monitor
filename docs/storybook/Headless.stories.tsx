@@ -67,7 +67,10 @@ const meta = {
       description: "Throttle store/UI updates without changing per-frame measurement accuracy.",
       control: { type: "range", min: 1, max: 30, step: 1 },
     },
-    deepAnalyze: { description: "Collect individual WebGL program details." },
+    deepAnalyze: {
+      description:
+        "Per-material breakdown for the debug panel. On if any mounted instance enables it.",
+    },
     matrixUpdate: { description: "Count matrixWorld updates each frame." },
     chart: {
       description: "Graph sampling frequency and retained history length for subscribers.",

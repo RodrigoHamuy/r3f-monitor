@@ -4,6 +4,61 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## 3.1.0 - 01-10-2026
+
+**`deepAnalyze` on WebGPU, and `frameloop="demand"` support.** Closes the one
+feature gap v3 left on WebGPU and fixes the monitor staying empty on on-demand
+canvases.
+
+### Added
+
+- **`deepAnalyze` on WebGPU.** The programs panel now works on `WebGPURenderer`:
+  meshes grouped by material, with users, triangle share, texture slots and the
+  hide / wireframe toggles. Node materials have no enumerable program list, so
+  entries are per material instead of per program. Works on every three version
+  that ships `WebGPURenderer`.
+- **Per-pass timing (WebGPU, three r181+).** While `deepAnalyze` is on, a
+  **Passes** block lists each render / compute pass of a frame (main scene,
+  shadow maps, render targets, post-processing, compute) with CPU encode time
+  and GPU time. Built on `renderer.inspector`: the existing inspector is wrapped,
+  not replaced, so three's own Inspector addon keeps working. GPU times need
+  `timestamp-query` and arrive a few frames late. On older three the block is
+  simply hidden.
+- Storybook: **Guides / Deep Analyze** (WebGL, WebGPU, demand + headless).
+
+### Fixed
+
+- **No data with `frameloop="demand"`** (#13). The first idle paused the sampler
+  for good; it now resumes on the next rendered frame.
+- **First frame after idle** no longer backfills the whole chart with one value
+  or counts the idle gap as frame time (#14, thanks @kvvasuu).
+- **Line graph kept the render loop alive.** Its own canvas ran with
+  `frameloop="always"`, so on-demand scenes never went idle and the monitor
+  reported ~60 FPS while nothing rendered. It now draws on its own 30 Hz timer,
+  outside R3F's loop, and stops while the scene is idle.
+- **Bar graph** stops its animation timer while the scene is idle.
+- Switching `frameloop` `always → demand → always` no longer leaves the monitor
+  empty.
+- **`<PerfHeadless />` + `<PerfMonitor />` together:**
+  - no more false "different options" warning when one side leaves an option at
+    its default;
+  - `deepAnalyze` / `matrixUpdate` are on if **any** mounted instance enables
+    them, and apply live — toggling them in the monitor's settings no longer
+    silently does nothing while another instance is mounted.
+- **`deepAnalyze` with `frameloop="demand"`:** the list fills without having to
+  move the camera, and hide / wireframe apply immediately.
+
+### Changed
+
+- Removed the "`deepAnalyze` is not supported on WebGPURenderer" warning.
+- `deepAnalyze` failures are isolated: it switches itself off with one console
+  warning, and FPS / CPU / GPU keep measuring.
+- With `graphType="line"`, CPU time no longer includes the monitor's own graph
+  rendering, so readings can be slightly lower than in 3.0.
+- `logsPerSecond` / `chart` still come from the first mounted instance; the
+  warning now only fires when those actually differ.
+- Source comments and console messages are in English.
+
 ## 3.0.0 - 2026-08-31
 
 **WebGPU support.** `<PerfMonitor />` and `<PerfHeadless />` now detect the

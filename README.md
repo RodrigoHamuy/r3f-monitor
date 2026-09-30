@@ -2,13 +2,15 @@
 
 # R3F-Monitor
 
-**[Changelog](https://github.com/anhldh/r3f-monitor/blob/main/CHANGELOG.md)**
+**[Docs & live examples](https://anhldh.github.io/r3f-monitor)** · **[Changelog](https://github.com/anhldh/r3f-monitor/blob/main/CHANGELOG.md)**
 
 An advanced, easy-to-use performance monitoring tool for [@react-three/fiber](https://github.com/pmndrs/react-three-fiber) applications.
 
 Add the <code>&lt;PerfMonitor /&gt;</code> component anywhere in your R3F Canvas — or go **headless** and bring your own UI.
 
 > **New in v3 — WebGPU.** Works with three's `WebGPURenderer` as well as the classic `WebGLRenderer`. The renderer is detected at runtime, so there is nothing to configure and **existing WebGL projects need no changes.**
+>
+> **v3.1** — `deepAnalyze` now works on WebGPU too (per-material breakdown + per-pass timing), and the monitor works with `frameloop="demand"`.
 
 ## Display Modes
 
@@ -59,7 +61,7 @@ Live example:
 - **Headless Mode (v2.1):** Run the measurement engine without the built-in UI. Read live metrics with `usePerfData()`.
 - **Adaptive Quality (v2.2):** `<PerfAdaptive />` automatically raises/lowers a quality `factor` (0–1) based on sustained FPS — drei `<PerformanceMonitor>`-compatible API, plus real GPU/CPU times to tell GPU-bound from CPU-bound. Pair with `useGpuTier()` for a per-device starting quality.
 - **VRAM:** Breakdown of GPU memory (Textures and Geometries) — estimated from the scene on WebGL, measured in real bytes on WebGPU.
-- **Deep Analysis:** Inspect individual WebGL programs, toggle visibility, and track matrix updates. _(Program inspection is WebGL-only; see [WebGPU](#-webgpu).)_
+- **Deep Analysis:** Find the expensive material — per-program (WebGL) or per-material (WebGPU) breakdown with triangle share, textures, hide / wireframe toggles, and matrix-update counting. On WebGPU (three r181+) it also times every render / compute pass. See [Deep Analysis](#-deep-analysis).
 - **Flexible UI:** Choose between graphical visualizations, detailed lists, or a minimal condensed view.
 
 > **Note:** Overclock mode was **removed in v2**. It still exists in `1.2.0` and earlier — pin to `1.2.0` if you rely on it.
@@ -90,7 +92,7 @@ logsPerSecond?: number          // Log refresh rate (default: 10)
 
 antialias?: boolean             // Enable text antialiasing
 
-deepAnalyze?: boolean           // Enable detailed WebGL program inspection
+deepAnalyze?: boolean           // Per-material breakdown (+ per-pass timing on WebGPU)
 
 showGraph?: boolean             // Toggle performance graphs (default: true)
 
@@ -127,6 +129,8 @@ Starting with **v2**, the FPS / CPU / GPU values come from a reworked measuremen
 - **GPU** — GPU time for the render pass, in **true milliseconds** (no scaling fudge). The mechanism depends on the renderer: a WebGL2 timer-query queue (`EXT_disjoint_timer_query_webgl2`) on `WebGLRenderer`, three's timestamp queries on `WebGPURenderer`. Both are read back asynchronously, so the value trails the current frame by a frame or two.
 
 The bar graph (`graphType: "bar"`) scrolls left as new samples arrive and uses a fixed (high-water) vertical scale, with a gradient fill per metric.
+
+**`frameloop="demand"`** (v3.1) — only frames R3F actually renders are measured. While the scene is idle the monitor pauses (graphs freeze, no timers run) and it resumes cleanly on the next frame; idle gaps are not drawn into the graphs. The monitor never keeps an on-demand canvas awake by itself — the only extra frames are a few rendered right after `deepAnalyze` is switched on, so its list fills while the scene is idle.
 
 ---
 
@@ -168,7 +172,8 @@ renderer class (`"webgpu"`), `infos.api` reports the GPU API actually in use
 | --- | --- | --- |
 | **VRAM** | **estimated** — walks the scene and sums buffer sizes, guessing texture memory from dimensions | **measured** — three tracks real allocated bytes, including render targets and uniform buffers |
 | **COMPUTE** | — | ms spent in compute passes, plus a **DISPATCH** count |
-| **Shaders** | an enumerable list of programs (this is what `deepAnalyze` inspects) | a count only — node materials compile straight to WGSL pipelines |
+| **Shaders** | an enumerable list of programs | a count only — node materials compile straight to WGSL pipelines |
+| **`deepAnalyze`** | grouped per program | grouped per material, plus per-pass timing (three r181+) |
 
 Because the two renderers measure *different things*, the VRAM figures will not
 match for the same scene. `usePerfData().vramSource` tells you which you are
@@ -178,11 +183,47 @@ The **COMPUTE** row only appears once the scene actually dispatches compute — 
 ordinary scene never does, so it stays hidden. `GPU` covers the render pass
 only: **total GPU time is `GPU + COMPUTE`.**
 
-**`deepAnalyze` is WebGL-only.** On WebGPU it warns once and is skipped; every
-other metric keeps working.
+**`deepAnalyze` works on both** since v3.1 — see [Deep Analysis](#-deep-analysis).
 
 GPU timing needs three's timestamp queries, which r3f-monitor turns on itself —
 you do **not** need to pass `trackTimestamp` when creating the renderer.
+
+---
+
+## 🔬 Deep Analysis
+
+> Available on WebGPU since **v3.1**
+
+Turn it on while profiling, keep it off in production:
+
+```tsx
+<PerfMonitor deepAnalyze />
+```
+
+or flip it on from the monitor's settings. Then open the **code icon** in the tab UI.
+Each entry shows the meshes using that material, their share of the frame's
+triangles / lines / points, texture slots and — on WebGL — the program's live
+uniforms. **Hover** the eye to see those meshes in wireframe, **click** it to hide
+them: the quickest way to find the material that tanks a frame.
+
+| | `WebGLRenderer` | `WebGPURenderer` |
+| --- | --- | --- |
+| Grouped by | WebGL program (mapped back to its material) | material |
+| Uniforms | live program uniforms | texture slots read off the material |
+| **Passes** | — | every render / compute pass of a frame, CPU + GPU ms |
+
+**Passes** (WebGPU only) lists the main scene, shadow maps, render targets,
+post-processing and compute passes separately — something a single GPU number
+can't tell you. It is built on `renderer.inspector`:
+
+| three | Material list | Passes CPU | Passes GPU |
+| --- | --- | --- | --- |
+| < r181 | ✓ | — | — |
+| r181+ | ✓ | ✓ | ✓ (needs `timestamp-query`; arrives a few frames late) |
+
+The existing inspector is wrapped, not replaced, so three's own Inspector addon
+keeps working alongside. If analysis ever throws, it switches itself off with one
+console warning — the regular metrics keep running.
 
 ---
 
@@ -389,8 +430,15 @@ render-prop version. The component calling the hook must be under `<Suspense>`.
 
 Since **v2.2** the measurement core is a ref-counted singleton: mounting
 `<PerfHeadless />` and `<PerfMonitor />` at the same time — or toggling the UI
-on and off — always runs exactly **one** engine. The first mount's options win;
-a console warning is logged if a later mount passes different options.
+on and off — always runs exactly **one** engine.
+
+A common setup is `<PerfHeadless />` feeding your own HUD plus `<PerfMonitor />`
+mounted only while debugging. How their options combine (v3.1):
+
+- **`deepAnalyze`, `matrixUpdate`** — on if **any** mounted instance enables them,
+  applied live (including the toggles in the monitor's settings).
+- **`logsPerSecond`, `chart`** — taken from the first mounted instance; a console
+  warning is logged only if a later one actually differs.
 
 ---
 
@@ -413,10 +461,8 @@ function App() {
 
 ### Maintainers :
 
-- [`@anhldh`](https://github.com/anhldh/r3f-monitor)
+- [`@anhldh`](https://github.com/anhldh) · [anhldh.com](https://anhldh.com)
 
 ### Thanks
 
-Special thanks to [`twitter @utsuboco`](https://twitter.com/utsuboco).
-
-r3f-monitor was originally based on the excellent [r3f-perf](https://github.com/utsuboco/r3f-perf) project and has since evolved with additional metrics, components, UI improvements, and various enhancements.
+r3f-monitor was originally built on code from [r3f-perf](https://github.com/utsuboco/r3f-perf) by [@utsuboco](https://github.com/utsuboco) — thank you for the foundation. It has since been largely reworked: new measurement core, headless mode, adaptive quality and WebGPU support.

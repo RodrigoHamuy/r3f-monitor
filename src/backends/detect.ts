@@ -5,21 +5,29 @@ import { WebGLPerfBackend } from "./webgl";
 import { WebGpuPerfBackend } from "./webgpu";
 
 /**
- * Bề mặt của `WebGPURenderer` mà r3f-monitor đọc tới.
+ * The subset of `WebGPURenderer` that r3f-monitor reads.
  *
- * KHÔNG import giá trị nào từ `three/webgpu`. Nếu import tĩnh thì consumer chỉ
- * dùng WebGL vẫn phải kéo cả build WebGPU (~1MB) vào bundle. May là ta không
- * cần giá trị nào: chỉ đọc property trên instance user đưa vào, còn hằng
- * `TimestampQuery.RENDER` thực chất là string `"render"`.
+ * Imports NO values from `three/webgpu`: a static import would pull the whole
+ * WebGPU build (~1MB) into WebGL-only bundles. Only instance properties are
+ * read, and `TimestampQuery.RENDER` is just the string `"render"`.
  */
 export type WebGpuRendererLike = {
   isWebGPURenderer: true;
   backend: {
     isWebGPUBackend?: boolean;
     trackTimestamp?: boolean;
-    /** Chỉ có trên backend WebGL2 của WebGPURenderer. */
+    /** Only present on WebGPURenderer's WebGL2 backend. */
     gl?: WebGL2RenderingContext;
+    getTimestamp?(uid: string): number;
+    /** Newer three only (absent in r183); older versions fall back to a pool lookup. */
+    hasTimestampQuery?(uid: string): boolean;
+    timestampQueryPool?: Record<
+      string,
+      { timestamps?: Map<string, number> } | null | undefined
+    >;
   };
+  /** `InspectorBase` instance, three r181+. Absent on older versions. */
+  inspector?: Record<string, any>;
   info: {
     autoReset: boolean;
     render: {
@@ -55,10 +63,10 @@ export type WebGpuRendererLike = {
 export type AnyRenderer = THREE.WebGLRenderer | WebGpuRendererLike;
 
 /**
- * Phân biệt bằng runtime, không bằng type.
+ * Runtime check, not a type check.
  *
- * `useThree().gl` trong r3f 9.x khai báo cứng là `THREE.WebGLRenderer` kể cả khi
- * runtime là WebGPURenderer, nên type ở đây không đáng tin.
+ * r3f 9.x types `useThree().gl` as `THREE.WebGLRenderer` even when it's a
+ * WebGPURenderer at runtime, so the static type can't be trusted.
  */
 export function isWebGpuRenderer(gl: unknown): gl is WebGpuRendererLike {
   return (
@@ -68,7 +76,7 @@ export function isWebGpuRenderer(gl: unknown): gl is WebGpuRendererLike {
   );
 }
 
-/** Chọn adapter theo renderer thật đang chạy. */
+/** Picks the adapter for the active renderer. */
 export function createBackend(
   gl: AnyRenderer,
   scene: THREE.Scene,

@@ -17,7 +17,7 @@ import {
 } from "./AdaptiveEngine";
 
 export type PerfAdaptiveProps = AdaptiveEngineOptions & {
-  /** Children có thể dùng hook usePerfAdaptive */
+  /** Children can use the usePerfAdaptive hook */
   children?: React.ReactNode;
 };
 
@@ -26,16 +26,16 @@ type LogSample = { fps: number; rawFps?: number; gpu: number; cpu: number };
 const context = /* @__PURE__ */ createContext<AdaptiveEngine>(null!);
 
 /**
- * Adaptive quality dựa trên số liệu đo của r3f-monitor.
+ * Adaptive quality driven by r3f-monitor measurements.
  *
- * Cần <PerfHeadless /> (trực tiếp hoặc qua <PerfMonitor />) mounted trong
- * <Canvas> để có dữ liệu — giống usePerfData. Mỗi tick log (theo nhịp
- * `logsPerSecond` của PerfHeadless) là 1 mẫu {fps, gpu, cpu} nạp vào engine.
+ * Needs <PerfHeadless /> (directly or via <PerfMonitor />) mounted inside
+ * <Canvas> — same as usePerfData. Each log tick (PerfHeadless `logsPerSecond`)
+ * feeds one {fps, gpu, cpu} sample into the engine.
  *
- * API tương thích drei <PerformanceMonitor>: dùng onIncline/onDecline/onChange
- * hoặc đọc `engine.factor` (0-1) để chỉnh dpr, shadow, effects... Trong
- * callbacks có thể so `engine.gpu` với `engine.cpu` để biết đang
- * GPU-bound (giảm dpr/effects có tác dụng) hay CPU-bound (nên giảm draw calls).
+ * drei <PerformanceMonitor>-compatible: use onIncline/onDecline/onChange or read
+ * `engine.factor` (0-1) to tune dpr, shadows, effects... In callbacks, compare
+ * `engine.gpu` with `engine.cpu`: GPU-bound (lower dpr/effects) vs CPU-bound
+ * (reduce draw calls).
  */
 export function PerfAdaptive({
   children,
@@ -47,14 +47,14 @@ export function PerfAdaptive({
 }: PerfAdaptiveProps) {
   const [engine] = useState(() => new AdaptiveEngine(options));
 
-  // Seed refreshrate sớm bằng nhịp rAF — tránh case scene nặng từ đầu khiến
-  // engine không bao giờ "thấy" FPS cao và học sai tần số màn hình.
-  // Max-fps learning vẫn chạy song song (chỉ tăng, không giảm).
+  // Seed refresh rate early from rAF timing — otherwise a scene that's heavy from
+  // the start never shows high FPS and the engine learns the wrong refresh rate.
+  // Max-FPS learning still runs alongside (only increases).
   useEffect(() => {
     detectRefreshRate().then((hz) => engine.seedRefreshrate(hz));
   }, [engine]);
 
-  // Đăng ký callbacks qua subscribe (luôn dùng bản mới nhất từ props)
+  // Register callbacks via subscribe (always uses the latest props)
   const callbacksRef = useRef<AdaptiveCallbacks>({
     onIncline,
     onDecline,
@@ -69,14 +69,14 @@ export function PerfAdaptive({
   }, [onIncline, onDecline, onChange, onFallback]);
   useLayoutEffect(() => engine.subscribe(callbacksRef.current), [engine]);
 
-  // Nguồn dữ liệu duy nhất: event "log" do PerfHeadless bắn ra.
-  // Khi paused (tab ẩn / loop dừng) paramLogger ngừng bắn -> không có mẫu oan.
-  // Ưu tiên rawFps (chưa qua EMA) để phát hiện tụt FPS nhanh; UI vẫn dùng fps smooth.
+  // Sole data source: the "log" event emitted by PerfHeadless.
+  // While paused (hidden tab / idle loop) paramLogger stops -> no bogus samples.
+  // Prefer rawFps (pre-EMA) to catch drops quickly; the UI still uses smoothed fps.
   //
-  // Event "log" bắn từ addAfterEffect (SAU khi frame đã vẽ) — nếu chạy callbacks
-  // ngay tại đó, setDpr sẽ resize (xoá trắng) buffer sau render -> nháy 1 frame.
-  // Nên chỉ queue mẫu ở đây, và flush trong addEffect (TRƯỚC render) để mọi
-  // thay đổi của user luôn được vẽ đè ngay trong cùng frame — giống drei.
+  // "log" fires from addAfterEffect (AFTER the frame is drawn) — running callbacks
+  // there would let setDpr resize (clear) the buffer post-render -> 1-frame flicker.
+  // So samples are only queued here and flushed in addEffect (BEFORE render), so
+  // user changes land in the same frame — same as drei.
   const queue = useRef<LogSample[]>([]);
   useEvent("log", ([log]: [LogSample, unknown]) => {
     queue.current.push(log);
@@ -98,7 +98,7 @@ export function PerfAdaptive({
 }
 
 /**
- * Hook cho children của <PerfAdaptive> — tương đương usePerformanceMonitor của drei.
+ * Hook for <PerfAdaptive> children — equivalent to drei's usePerformanceMonitor.
  */
 export function usePerfAdaptive({
   onIncline,
