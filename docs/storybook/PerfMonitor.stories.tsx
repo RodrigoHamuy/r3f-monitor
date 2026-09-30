@@ -59,7 +59,10 @@ const meta = {
     },
     showGraph: { description: "Show or hide the performance history graph." },
     minimal: { description: "Keep only the hot metrics in a condensed panel." },
-    deepAnalyze: { description: "Collect and expose individual WebGL program details." },
+    deepAnalyze: {
+      description:
+        "Per-material breakdown (WebGL programs / WebGPU materials, plus passes on WebGPU). See Guides / Deep Analyze.",
+    },
     matrixUpdate: { description: "Count matrixWorld updates for each frame." },
     antialias: { description: "Enable antialiasing for the line graph canvas." },
     openByDefault: { description: "Start the Classic panel in its expanded state." },
@@ -136,7 +139,7 @@ export const DeepAnalysis: Story = {
   render: (args) => (
     <MonitorDemo
       {...args}
-      caption="Open the code icon to inspect WebGL programs; the RES tab includes matrix updates."
+      caption="Open the code icon for the per-material breakdown; the RES tab includes matrix updates. More in Guides / Deep Analyze."
     />
   ),
 };
