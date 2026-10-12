@@ -252,7 +252,7 @@ export class PerfSampler {
     }
 
     const timespan = t - this.chartTime;
-    let hz = (this.chartHz * timespan) / 1e3;
+    let hz = Math.min(this.chartLen + 1, (this.chartHz * timespan) / 1e3);
 
     while (--hz > 0) {
       const slot = this.circularId % this.chartLen;
