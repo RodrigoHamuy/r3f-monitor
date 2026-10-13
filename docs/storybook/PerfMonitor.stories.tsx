@@ -2,21 +2,32 @@ import { Canvas } from "@react-three/fiber";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { PerfMonitor } from "../../src/components/PerfMonitor";
+import { CameraControls, DemandOrbit } from "./CameraControls";
 import { DemoScene } from "./DemoScene";
 
 type MonitorDemoProps = React.ComponentProps<typeof PerfMonitor> & {
   caption?: string;
+  /** Render with frameloop="demand": frames are only drawn when the camera moves. */
+  demand?: boolean;
 };
 
-function MonitorDemo({ caption, ...props }: MonitorDemoProps) {
+function MonitorDemo({ caption, demand = false, ...props }: MonitorDemoProps) {
+  const title = props.displayType === "classic" ? "Classic display" : "Tab display";
+
   return (
     <main className="demo-shell">
-      <Canvas className="demo-canvas" camera={{ position: [0, 1.1, 7.2], fov: 48 }} dpr={[1, 2]}>
+      <Canvas
+        className="demo-canvas"
+        frameloop={demand ? "demand" : "always"}
+        camera={{ position: [0, 1.1, 7.2], fov: 48 }}
+        dpr={[1, 2]}
+      >
         <PerfMonitor {...props} />
         <DemoScene />
+        {demand ? <DemandOrbit /> : <CameraControls />}
       </Canvas>
       <div className="demo-caption">
-        <strong>{props.displayType === "classic" ? "Classic display" : "Tab display"}</strong>
+        <strong>{demand ? 'frameloop="demand"' : title}</strong>
         <span>{caption}</span>
       </div>
     </main>
@@ -150,5 +161,27 @@ export const BottomLeft: Story = {
   },
   render: (args) => (
     <MonitorDemo {...args} caption="The monitor can anchor to any corner of the viewport." />
+  ),
+};
+
+export const DemandRendering: Story = {
+  name: "Demand rendering",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'With `frameloop="demand"` a frame is only drawn when something calls `invalidate()`. Metrics and both graph types update while frames render and hold still while the scene is idle.',
+      },
+      source: {
+        language: "tsx",
+        code: `<Canvas frameloop="demand">
+  <PerfMonitor />
+  <YourScene />
+</Canvas>`,
+      },
+    },
+  },
+  render: (args) => (
+    <MonitorDemo {...args} demand caption="Drag or scroll to render frames. The monitor only updates while the scene is drawing." />
   ),
 };

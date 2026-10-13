@@ -47,3 +47,27 @@ export function CameraControls({
 
   return null;
 }
+
+/**
+ * OrbitControls for frameloop="demand": plain three controls don't request frames,
+ * so every `change` calls invalidate(). No damping, so each change renders one frame.
+ */
+export function DemandOrbit() {
+  const camera = useThree((state) => state.camera);
+  const domElement = useThree((state) => state.gl.domElement);
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    const controls = new OrbitControls(camera, domElement);
+    controls.minDistance = 3;
+    controls.maxDistance = 24;
+    const onChange = () => invalidate();
+    controls.addEventListener("change", onChange);
+    return () => {
+      controls.removeEventListener("change", onChange);
+      controls.dispose();
+    };
+  }, [camera, domElement, invalidate]);
+
+  return null;
+}
