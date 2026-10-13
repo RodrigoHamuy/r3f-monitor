@@ -142,27 +142,6 @@ export class PerfSampler {
     return ((count - 1) * 1000) / elapsed;
   }
 
-  /**
-   * Call when the loop restarts after idle (frameloop="demand", hidden tab, ...).
-   * Rebases timestamps to now so the idle gap isn't logged and pushChart
-   * doesn't backfill hundreds of chart slots in one frame.
-   */
-  resume() {
-    const t = this.now();
-    this.paramTime = t;
-    this.paramFrame = this.frameId;
-    this.chartTime = t;
-    this.totalCpuDuration = 0;
-    this.logsAccums = {
-      mem: [],
-      gpu: [],
-      gpuCompute: [],
-      cpu: [],
-      fps: [],
-      rawFps: [],
-    };
-  }
-
   /** Start wall-clock timing of the render pass. */
   begin() {
     this.cpuStartTime = this.now();
