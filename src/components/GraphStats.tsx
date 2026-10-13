@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import { getPerf, usePerf } from "../store";
+import { getPerf } from "../store";
 
 type Theme = { fg: string; bg: string };
 const THEMES: Record<"fps" | "cpu" | "gpu", Theme> = {
@@ -52,7 +52,6 @@ export function ChartStats({
   showHeaderText?: boolean;
   hasChange?: boolean;
 }) {
-  const paused = usePerf((s) => s.paused);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(300);
@@ -156,16 +155,18 @@ export function ChartStats({
   ]);
 
   useEffect(() => {
-    if (!show || paused) return;
+    if (!show) return;
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
 
     let raf = 0;
     let lastTime = 0;
+    let lastChart: ReturnType<typeof getPerf>["chart"] | undefined;
 
     function drawFrame(timestamp: number) {
       raf = requestAnimationFrame(drawFrame);
+      if (getPerf().chart === lastChart) return;
 
       const delta = timestamp - lastTime;
       if (delta < INTERVAL) return;
@@ -173,6 +174,7 @@ export function ChartStats({
 
       const perf = getPerf();
       const circ = perf.chart.circularId;
+      lastChart = perf.chart;
 
       for (let p = 0; p < count; p++) {
         const { key, label, maxVal } = activePanels[p];
@@ -236,7 +238,6 @@ export function ChartStats({
     raf = requestAnimationFrame(drawFrame);
     return () => cancelAnimationFrame(raf);
   }, [
-    paused,
     show,
     dpr,
     panelW,
