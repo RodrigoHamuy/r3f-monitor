@@ -129,7 +129,7 @@ No tests yet, and two measurement paths must stay in sync. Recent bugs (the
 #13) were not caught by TypeScript — they needed a real browser.
 
 - [ ] `PerfSampler`: FPS window, EMA, `logsPerSecond` throttle, `pushChart` slot
-      count, `resume()` after idle.
+      count, backfill cap after idle.
 - [ ] `AdaptiveEngine`: incline / decline / flipflop fallback.
 - [ ] `acquirePerf`: option normalization, live flag merging across instances.
 - [ ] Adapters: `readFrameStats` / `readMemory` against mocked WebGL / WebGPU `info`.

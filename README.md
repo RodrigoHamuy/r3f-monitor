@@ -130,7 +130,7 @@ Starting with **v2**, the FPS / CPU / GPU values come from a reworked measuremen
 
 The bar graph (`graphType: "bar"`) scrolls left as new samples arrive and uses a fixed (high-water) vertical scale, with a gradient fill per metric.
 
-**`frameloop="demand"`** (v3.1) — only frames R3F actually renders are measured. While the scene is idle the monitor pauses (graphs freeze, no timers run) and it resumes cleanly on the next frame; idle gaps are not drawn into the graphs. The monitor never keeps an on-demand canvas awake by itself — the only extra frames are a few rendered right after `deepAnalyze` is switched on, so its list fills while the scene is idle.
+**`frameloop="demand"`** (v3.1) — only frames R3F actually renders are measured, including single frames requested one at a time with `invalidate()`. While the scene is idle nothing is sampled: the readouts and `usePerfData` hold their last values and the graphs stop moving. Sampling picks up again on the next frame; the bar graph simply carries on, while the line graph fills the idle gap with the first new reading (up to the whole chart after a long pause). The monitor never keeps an on-demand canvas awake by itself — the only extra frames are a few rendered right after `deepAnalyze` is switched on, so its list fills while the scene is idle.
 
 ---
 

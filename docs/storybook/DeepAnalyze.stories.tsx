@@ -1,12 +1,10 @@
-import { useEffect } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 import { PerfHeadless } from "../../src/components/PerfHeadless";
 import { PerfMonitor } from "../../src/components/PerfMonitor";
 import { usePerfData } from "../../src/hooks/usePerfData";
-import { CameraControls } from "./CameraControls";
+import { CameraControls, DemandOrbit } from "./CameraControls";
 import { ComputeParticles } from "./ComputeParticles";
 import { DemoScene } from "./DemoScene";
 import { PrimitiveScene } from "./PrimitiveScene";
@@ -18,30 +16,6 @@ const CAMERA = {
   position: [0, 1.4, 7.6] as [number, number, number],
   fov: 48,
 };
-
-/**
- * OrbitControls for frameloop="demand": plain three controls don't request frames,
- * so every `change` (including damping) calls invalidate().
- */
-function DemandOrbit() {
-  const camera = useThree((state) => state.camera);
-  const domElement = useThree((state) => state.gl.domElement);
-  const invalidate = useThree((state) => state.invalidate);
-
-  useEffect(() => {
-    const controls = new OrbitControls(camera, domElement);
-    controls.minDistance = 3;
-    controls.maxDistance = 24;
-    const onChange = () => invalidate();
-    controls.addEventListener("change", onChange);
-    return () => {
-      controls.removeEventListener("change", onChange);
-      controls.dispose();
-    };
-  }, [camera, domElement, invalidate]);
-
-  return null;
-}
 
 /** App-side HUD fed by <PerfHeadless /> — the "reading data" half of the setup. */
 function AppHud() {
