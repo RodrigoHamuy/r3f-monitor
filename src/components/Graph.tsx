@@ -1,7 +1,7 @@
 import { type FC, useEffect, useMemo, useRef } from "react";
 import { matriceCount, matriceWorldCount } from "./PerfHeadless";
 import { Canvas, useFrame, useThree, type Viewport } from "@react-three/fiber";
-import { getPerf, usePerf } from "../store";
+import { getPerf } from "../store";
 import * as THREE from "three";
 import type { PerfUIProps } from "../types";
 import styles from "../style/tab.module.css";
@@ -216,21 +216,27 @@ const Renderer = () => {
 const CHART_INTERVAL = 1000 / 30;
 const ChartDriver = () => {
   const advance = useThree((s) => s.advance);
-  const paused = usePerf((s) => s.paused);
+  // Resizing clears the drawing buffer: restart the effect to redraw once.
+  const size = useThree((s) => s.size);
 
   useEffect(() => {
-    if (paused) return;
     let raf = 0;
     let last = 0;
+    let lastChart: ReturnType<typeof getPerf>["chart"] | undefined;
     const tick = (t: number) => {
       raf = requestAnimationFrame(tick);
+      // Redraw on new chart data, not on `paused`: an isolated demand frame
+      // flips it false -> true within one tick, so React never sees it.
+      const chart = getPerf().chart;
+      if (chart === lastChart) return;
       if (t - last < CHART_INTERVAL) return;
       last = t;
+      lastChart = chart;
       advance(t, false);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [advance, paused]);
+  }, [advance, size]);
 
   return null;
 };

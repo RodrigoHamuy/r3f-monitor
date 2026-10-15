@@ -354,19 +354,9 @@ function createCore(
     matriceCount.value = 0;
     matriceWorldCount.value = 0;
 
-    setPerf({
-      paused: true,
-      log: {
-        maxMemory: 0,
-        gpu: 0,
-        gpuCompute: 0,
-        mem: 0,
-        cpu: 0,
-        fps: 0,
-        totalTime: 0,
-        frameCount: 0,
-      },
-    });
+    // `log` keeps its last values: with isolated demand frames the tail runs
+    // right after every frame, so resetting it here would hide every sample.
+    setPerf({ paused: true });
     return false;
   });
 
