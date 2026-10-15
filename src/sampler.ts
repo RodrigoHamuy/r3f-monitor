@@ -19,7 +19,7 @@ export type SampleLog = {
   gpuCompute: number;
   mem: number;
   fps: number;
-  /** FPS before EMA smoothing — lets adaptive quality react faster. */
+  /** FPS over the 1s window — used by adaptive quality. */
   rawFps: number;
   duration: number;
   maxMemory: number;
@@ -44,7 +44,7 @@ const average = (arr: number[]) =>
   arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
 /**
- * Renderer-agnostic sampling: FPS (1s sliding window + EMA), CPU wall-clock,
+ * Renderer-agnostic sampling: FPS (1s sliding window), CPU wall-clock,
  * `logsPerSecond` throttling and a circular chart buffer.
  *
  * GPU timings are read by the backend and passed to `nextFrame()`, so WebGL
@@ -183,10 +183,10 @@ export class PerfSampler {
     const duration = t - this.paramTime;
 
     const rawFps = this.calculateFps();
-    // Per-frame FPS for display, so single slow frames show up in the chart
-    const fps =
+    // Show slow frames as dips without exceeding the windowed FPS
+    const frameFps =
       this.lastFrameTime > 0 && t > this.lastFrameTime
-        ? 1000 / (t - this.lastFrameTime)
+        ? Math.min(1000 / (t - this.lastFrameTime), rawFps)
         : rawFps;
     this.lastFrameTime = t;
     const cpu = this.totalCpuDuration;
@@ -207,7 +207,7 @@ export class PerfSampler {
       );
 
       this.logsAccums.mem.push(this.currentMem);
-      this.logsAccums.fps.push(fps);
+      this.logsAccums.fps.push(rawFps);
       this.logsAccums.rawFps.push(rawFps);
       this.logsAccums.gpu.push(gpu);
       this.logsAccums.gpuCompute.push(gpuCompute);
@@ -241,7 +241,7 @@ export class PerfSampler {
     // reset accumulated CPU for the next frame
     this.totalCpuDuration = 0;
 
-    this.pushChart(t, fps, cpu, gpu);
+    this.pushChart(t, frameFps, cpu, gpu);
   }
 
   private pushChart(t: number, fps: number, cpu: number, gpu: number) {
